@@ -5,7 +5,7 @@ from mcp import Client
 from starlette.testclient import TestClient
 
 from config import Settings
-from server import create_server
+from server import create_server, transport_security
 
 EXPECTED_TOOLS = {"list_deployments", "get_pod_status", "get_logs", "get_metrics"}
 
@@ -31,6 +31,25 @@ def tool_payload(result) -> dict:
 def test_health_route(server):
     with TestClient(server.streamable_http_app()) as http:
         assert http.get("/health").json() == {"status": "ok"}
+
+
+def test_transport_security_uses_sdk_default_without_allowed_hosts():
+    assert transport_security(Settings(_env_file=None)) is None
+
+
+def test_transport_security_enforces_allowed_hosts():
+    security = transport_security(Settings(_env_file=None, allowed_hosts=["mcp-server:*"]))
+    assert security.enable_dns_rebinding_protection
+    assert security.allowed_hosts == ["mcp-server:*"]
+
+
+def test_foreign_host_header_rejected(server):
+    app = server.streamable_http_app(
+        transport_security=transport_security(Settings(_env_file=None, allowed_hosts=["mcp-server:*"]))
+    )
+    with TestClient(app) as http:
+        response = http.post("/mcp", headers={"Host": "evil.example:9000"}, json={})
+    assert response.status_code == 421
 
 
 async def test_tools_are_discoverable(client):

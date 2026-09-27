@@ -103,8 +103,24 @@ message.
 
 ## 11. Dependencies
 
-- Pin exact versions in `requirements.txt`. List every package the code imports
+- Pin exact versions. Runtime packages go in `requirements.txt`, which is what
+  the Docker image installs. Test and dev tools go in `requirements-dev.txt`
+  (`-r requirements.txt` + extras). List every package the code imports
   directly, even if it's also installed transitively.
-- Verify the API of the installed version before using it. This repo uses
+- Verify the API of the installed version before using it.
+
+## 12. Containers
+
+- Both services use the one shared `docker/python-service.Dockerfile`. Don't
+  fork a Dockerfile per service unless its needs really differ.
+- Images run as a non-root user and never contain `.env`, tests or dev
+  dependencies. Keep each service's `.dockerignore` up to date.
+- Secrets reach containers at runtime (`env_file`), never at build time.
+- Publish ports on `127.0.0.1` only. Services talk to each other by service
+  name on the compose network.
+- A service listening on `0.0.0.0` must keep its host validation (for example
+  `MCP_ALLOWED_HOSTS`).
+- Every service has a healthcheck, and dependents wait on
+  `condition: service_healthy`. This repo uses
   **mcp 2.x**, **LangChain 1.x** and **LangGraph 1.x**, and most examples online
   are for older versions.

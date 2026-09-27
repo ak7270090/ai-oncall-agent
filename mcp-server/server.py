@@ -1,6 +1,7 @@
 """On-call MCP server. Configure with MCP_* environment variables (see config/settings.py)."""
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -20,6 +21,12 @@ def create_server(settings: Settings) -> MCPServer:
     return server
 
 
+def transport_security(settings: Settings) -> TransportSecuritySettings | None:
+    if not settings.allowed_hosts:
+        return None
+    return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=settings.allowed_hosts)
+
+
 mcp = create_server(get_settings())
 
 
@@ -33,6 +40,7 @@ def main() -> None:
             host=settings.host,
             port=settings.port,
             streamable_http_path=settings.path,
+            transport_security=transport_security(settings),
         )
 
 

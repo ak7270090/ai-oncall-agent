@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     port: int = 9000
     path: str = "/mcp"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    # Host headers accepted when bound to a non-localhost address (DNS rebinding
+    # protection). Empty = SDK default: protection on for localhost binds only.
+    allowed_hosts: list[str] = []
 
 
 @lru_cache

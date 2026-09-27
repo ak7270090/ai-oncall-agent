@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_title: str = "AI On-Call Server"
+    server_host: str = "127.0.0.1"
+    server_port: int = 8000
 
     mcp_server_url: str = "http://127.0.0.1:9000/mcp"
     mcp_timeout_seconds: float = 30

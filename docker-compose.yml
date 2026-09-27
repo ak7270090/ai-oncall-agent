@@ -1,0 +1,54 @@
+name: ai-oncall-agent
+
+x-python-service: &python-service
+  restart: unless-stopped
+  networks: [oncall]
+  healthcheck: &healthcheck
+    interval: 10s
+    timeout: 3s
+    retries: 5
+    start_period: 10s
+
+services:
+  mcp-server:
+    <<: *python-service
+    build:
+      context: ./mcp-server
+      dockerfile: ../docker/python-service.Dockerfile
+      args:
+        APP_ENTRYPOINT: server.py
+        APP_PORT: ${MCP_PORT:-9000}
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: ${MCP_PORT:-9000}
+      MCP_ALLOWED_HOSTS: '["mcp-server:*", "localhost:*", "127.0.0.1:*"]'
+    ports:
+      - "127.0.0.1:${MCP_PORT:-9000}:${MCP_PORT:-9000}"
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${MCP_PORT:-9000}/health')"]
+
+  ai-server:
+    <<: *python-service
+    build:
+      context: ./ai-server
+      dockerfile: ../docker/python-service.Dockerfile
+      args:
+        APP_ENTRYPOINT: main.py
+        APP_PORT: ${AI_SERVER_PORT:-8000}
+    env_file: ./ai-server/.env
+    environment:
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: ${AI_SERVER_PORT:-8000}
+      MCP_SERVER_URL: http://mcp-server:${MCP_PORT:-9000}/mcp
+    ports:
+      - "127.0.0.1:${AI_SERVER_PORT:-8000}:${AI_SERVER_PORT:-8000}"
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${AI_SERVER_PORT:-8000}/health')"]
+
+networks:
+  oncall:

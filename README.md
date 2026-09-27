@@ -1,7 +1,7 @@
 # AI On-Call Agent (MCP)
 
 An AI on-call assistant that investigates incidents through the Model Context
-Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–3 are done.**
+Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–4 are done.**
 Code rules are in [CODING_GUIDELINES.md](./CODING_GUIDELINES.md).
 
 ```text
@@ -34,6 +34,8 @@ ai-oncall-agent/
 │   ├── mcp_client/            connection.py, tools.py (MCP → LangChain adapter)
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
+├── docker/python-service.Dockerfile   one image recipe for both services
+├── docker-compose.yml
 └── CODING_GUIDELINES.md
 ```
 
@@ -42,11 +44,11 @@ ai-oncall-agent/
 ```powershell
 cd mcp-server
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt
+.\.venv\Scripts\pip install -r requirements-dev.txt
 
 cd ..\ai-server
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt
+.\.venv\Scripts\pip install -r requirements-dev.txt
 copy .env.example .env      # set LLM_MODEL and LLM_API_KEY
 ```
 
@@ -59,14 +61,34 @@ LLM_MODEL=openai:gpt-5.4-mini        # or anthropic:claude-opus-5, openai:gpt-5.
 LLM_API_KEY=<key for that provider>
 ```
 
-## Run
+## Run with Docker
+
+Needs Docker Desktop running and `ai-server/.env` created (see above).
+
+```powershell
+docker compose up -d --build --wait   # builds both images, waits until healthy
+docker compose logs -f                # follow logs
+docker compose down                   # stop
+```
+
+- Both services run on a private `oncall` network. The AI server reaches the
+  MCP server at `http://mcp-server:9000/mcp`.
+- Ports are published on `127.0.0.1` only: AI server `8000`, MCP server `9000`
+  (for the Inspector). To change them, copy `.env.example` in the repo root to
+  `.env` and edit it.
+- Images run as a non-root user and contain no `.env`, tests or dev
+  dependencies. The API key is passed in at runtime from `ai-server/.env`.
+- Inside Docker the MCP server listens on `0.0.0.0`, so DNS-rebinding protection
+  is enabled explicitly with `MCP_ALLOWED_HOSTS`.
+
+## Run locally (without Docker)
 
 ```powershell
 # terminal 1 — MCP server on http://127.0.0.1:9000/mcp
 cd mcp-server; .\.venv\Scripts\python server.py
 
 # terminal 2 — AI server on http://127.0.0.1:8000 (Swagger UI at /docs)
-cd ai-server; .\.venv\Scripts\python -m uvicorn main:app --port 8000
+cd ai-server; .\.venv\Scripts\python main.py
 ```
 
 | Endpoint | What it does |
