@@ -1,5 +1,6 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException, status
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from settings import get_settings
@@ -22,6 +23,7 @@ USERS = {
 
 settings = get_settings()
 app = FastAPI(title=settings.service_name, version=settings.app_version)
+Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(app).expose(app, include_in_schema=False)
 
 
 @app.get("/health")

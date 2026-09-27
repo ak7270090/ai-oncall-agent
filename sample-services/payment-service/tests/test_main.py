@@ -26,3 +26,8 @@ def test_missing_api_key_fails_startup(monkeypatch):
     from settings import Settings
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_payments_are_counted_in_metrics(client):
+    client.post("/payments", json={"order_id": "o-1", "amount": 5.0})
+    assert 'http_requests_total{handler="/payments",method="POST",status="2xx"}' in client.get("/metrics").text

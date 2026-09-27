@@ -2,3 +2,8 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
   - role: control-plane
+    extraPortMappings:
+      # Prometheus NodePort -> http://127.0.0.1:9090 on the host (localhost only).
+      - containerPort: 30090
+        hostPort: 9090
+        listenAddress: 127.0.0.1

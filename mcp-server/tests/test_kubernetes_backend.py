@@ -125,3 +125,10 @@ def test_missing_kubeconfig_explains_how_to_fix(tmp_path):
     backend = KubernetesBackend(str(tmp_path / "missing"), request_timeout_seconds=1)
     with pytest.raises(ClusterError, match="make mcp-kubeconfig"):
         backend.list_pods(NAMESPACE, None)
+
+
+def test_missing_previous_container_tells_model_what_to_do_instead():
+    def fail(*args, **kwargs):
+        raise ApiException(status=400, reason="previous terminated container not found")
+    with pytest.raises(ClusterError, match="previous=false"):
+        backend_with(core=SimpleNamespace(read_namespaced_pod_log=fail)).get_pod_logs(NAMESPACE, "p", 10, previous=True)

@@ -2,15 +2,13 @@ from collections.abc import Callable
 
 from cluster import ClusterBackend
 from config import Settings
+from observability import MetricsBackend
 from tools.kubernetes import build_kubernetes_tools
-from tools.observability import FAKE_OBSERVABILITY_TOOLS
+from tools.observability import build_observability_tools
 
 
-def build_tools(backend: ClusterBackend, settings: Settings) -> list[Callable]:
-    tools = build_kubernetes_tools(backend, settings)
-    if settings.backend == "fake":
-        tools.extend(FAKE_OBSERVABILITY_TOOLS)
-    return tools
+def build_tools(cluster: ClusterBackend, metrics: MetricsBackend, settings: Settings) -> list[Callable]:
+    return [*build_kubernetes_tools(cluster, settings), *build_observability_tools(metrics, settings)]
 
 
 __all__ = ["build_tools"]

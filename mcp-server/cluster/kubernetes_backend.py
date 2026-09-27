@@ -160,10 +160,18 @@ class KubernetesBackend:
             return _pod_detail(self._core.read_namespaced_pod(name, namespace, _request_timeout=self._timeout))
 
     def get_pod_logs(self, namespace: str, name: str, tail_lines: int, previous: bool) -> list[str]:
-        with translate_errors(f"read logs of pod '{name}'", namespace):
-            text = self._core.read_namespaced_pod_log(
-                name, namespace, tail_lines=tail_lines, previous=previous, _request_timeout=self._timeout
-            )
+        try:
+            with translate_errors(f"read logs of pod '{name}'", namespace):
+                text = self._core.read_namespaced_pod_log(
+                    name, namespace, tail_lines=tail_lines, previous=previous, _request_timeout=self._timeout
+                )
+        except ClusterError as error:
+            if previous and isinstance(error.__cause__, ApiException) and error.__cause__.status == 400:
+                raise ClusterError(
+                    f"Pod '{name}' has no previous (crashed) container; it has not restarted. "
+                    "Call get_pod_logs again with previous=false for its current logs."
+                ) from error
+            raise
         return text.splitlines()
 
     def list_deployments(self, namespace: str) -> list[DeploymentSummary]:

@@ -15,6 +15,10 @@ spec:
       labels:
         app: order-service
         version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
     spec:
       securityContext:
         runAsNonRoot: true

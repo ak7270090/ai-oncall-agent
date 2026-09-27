@@ -19,7 +19,10 @@ class FakeBackend:
         self.get_pod(namespace, name)
         logs = fake_cluster.PREVIOUS_LOGS if previous else fake_cluster.LOGS
         if name not in logs:
-            raise ClusterError(f"No previous terminated container for pod '{name}'")
+            raise ClusterError(
+                f"Pod '{name}' has no previous (crashed) container; it has not restarted. "
+                "Call get_pod_logs again with previous=false for its current logs."
+            )
         return logs[name][-tail_lines:]
 
     def list_deployments(self, namespace: str) -> list[DeploymentSummary]:

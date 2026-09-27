@@ -25,7 +25,7 @@ HOST = "127.0.0.1"
 STARTUP_TIMEOUT_SECONDS = 20
 MCP_TIMEOUT_SECONDS = 10
 EXPECTED_TOOLS = {"list_pods", "get_pod_status", "get_pod_logs", "list_deployments", "get_deployment",
-                  "list_events", "get_metrics"}
+                  "list_events", "get_service_overview", "get_metrics"}
 
 if not VENV_PYTHON.exists():
     pytest.skip(f"MCP server virtualenv not found at {VENV_PYTHON}", allow_module_level=True)

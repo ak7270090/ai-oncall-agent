@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import uvicorn
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
 
 from settings import get_settings
@@ -23,6 +24,7 @@ class Payment(BaseModel):
 
 settings = get_settings()
 app = FastAPI(title=settings.service_name, version=settings.app_version)
+Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(app).expose(app, include_in_schema=False)
 
 
 @app.get("/health")

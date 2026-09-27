@@ -7,12 +7,16 @@ from starlette.responses import JSONResponse
 
 from cluster import ClusterBackend, create_backend
 from config import Settings, get_settings
+from observability import MetricsBackend, create_metrics_backend
 from tools import build_tools
 
 
-def create_server(settings: Settings, backend: ClusterBackend | None = None) -> MCPServer:
+def create_server(
+    settings: Settings, cluster: ClusterBackend | None = None, metrics: MetricsBackend | None = None
+) -> MCPServer:
     server = MCPServer(settings.server_name, version=settings.server_version, log_level=settings.log_level)
-    for tool in build_tools(backend or create_backend(settings), settings):
+    tools = build_tools(cluster or create_backend(settings), metrics or create_metrics_backend(settings), settings)
+    for tool in tools:
         server.add_tool(tool)
 
     @server.custom_route("/health", methods=["GET"])

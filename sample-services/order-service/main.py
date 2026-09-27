@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -6,6 +7,7 @@ from uuid import uuid4
 import httpx2
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
 
 from settings import get_settings
@@ -25,6 +27,8 @@ class Order(BaseModel):
 
 
 settings = get_settings()
+# uvicorn's configured logger, so messages appear in the pod log next to access logs.
+logger = logging.getLogger("uvicorn.error")
 
 
 @asynccontextmanager
@@ -35,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title=settings.service_name, version=settings.app_version, lifespan=lifespan)
+Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(app).expose(app, include_in_schema=False)
 
 
 def get_http_client(request: Request) -> httpx2.AsyncClient:
@@ -44,15 +49,20 @@ def get_http_client(request: Request) -> httpx2.AsyncClient:
 HttpClientDep = Annotated[httpx2.AsyncClient, Depends(get_http_client)]
 
 
+def upstream_failure(message: str) -> HTTPException:
+    logger.error(message)
+    return HTTPException(status.HTTP_502_BAD_GATEWAY, message)
+
+
 async def call_downstream(http_client: httpx2.AsyncClient, method: str, url: str, **kwargs) -> dict:
     try:
         response = await http_client.request(method, url, **kwargs)
     except httpx2.HTTPError as error:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"upstream unavailable: {url} ({error!r})")
+        raise upstream_failure(f"upstream unavailable: {method} {url} ({error!r})")
     if response.status_code == status.HTTP_404_NOT_FOUND:
         raise HTTPException(status.HTTP_404_NOT_FOUND, response.json().get("detail", "not found"))
     if response.is_error:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"upstream error {response.status_code}: {url}")
+        raise upstream_failure(f"upstream error {response.status_code}: {method} {url}")
     return response.json()
 
 

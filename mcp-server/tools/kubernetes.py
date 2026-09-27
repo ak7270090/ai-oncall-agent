@@ -3,7 +3,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from cluster import ClusterBackend, ClusterError
+from cluster import ClusterBackend
 from cluster.models import (
     DeploymentDetail,
     DeploymentList,
@@ -14,6 +14,7 @@ from cluster.models import (
     summarize_pod,
 )
 from config import Settings
+from tools.guards import namespace_guard
 
 DEFAULT_LOG_LINES = 50
 MAX_LOG_LINES = 500
@@ -22,14 +23,7 @@ MAX_EVENT_LIMIT = 100
 
 
 def build_kubernetes_tools(backend: ClusterBackend, settings: Settings) -> list[Callable]:
-    namespace_description = f"Kubernetes namespace (allowed: {', '.join(settings.allowed_namespaces)})"
-    Namespace = Annotated[str, Field(description=namespace_description)]
-
-    def require_allowed(namespace: str) -> None:
-        if namespace not in settings.allowed_namespaces:
-            raise ClusterError(
-                f"Namespace '{namespace}' is not allowed. Allowed: {', '.join(settings.allowed_namespaces)}"
-            )
+    Namespace, require_allowed = namespace_guard(settings)
 
     def list_pods(
         namespace: Namespace = settings.default_namespace,

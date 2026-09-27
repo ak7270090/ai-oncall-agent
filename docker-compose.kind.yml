@@ -1,11 +1,12 @@
-# Overlay for `make up-kind`: the MCP server reads the kind cluster instead of fake data.
-# Joins kind's Docker network and uses the read-only ServiceAccount credentials
-# written by `make mcp-kubeconfig` (internal API address).
+# Overlay for `make up-kind`: the MCP server reads the kind cluster and its Prometheus
+# instead of fake data. Joins kind's Docker network and uses the read-only
+# ServiceAccount credentials written by `make mcp-kubeconfig` (internal API address).
 services:
   mcp-server:
     environment:
       MCP_BACKEND: kubernetes
       MCP_KUBECONFIG_PATH: /app/.kube/config
+      MCP_PROMETHEUS_URL: http://${CLUSTER:-oncall-lab}-control-plane:30090
     volumes:
       - ./mcp-server/.kube/config.internal:/app/.kube/config:ro
     networks: [default, kind]

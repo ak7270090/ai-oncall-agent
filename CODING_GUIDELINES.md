@@ -174,6 +174,23 @@ message.
 - Tools return typed pydantic models (they become the MCP output schema)
   containing only the fields an on-call engineer needs. Never return raw API
   objects, environment variables or anything from a Secret.
-- Keep fake and real backends behind the same `ClusterBackend` interface so
-  every tool is testable without a cluster. Never mix synthetic data with a
-  real backend.
+- Keep fake and real backends behind the same interface (`ClusterBackend`,
+  `MetricsBackend`) so every tool is testable without a cluster. Never mix
+  synthetic data with a real backend.
+- Validate every value that gets put into a query language (PromQL, label
+  selectors) against a strict pattern (`tools/guards.py::NAME_PATTERN`). Never
+  build a query from free text.
+- Write tool errors for the model. Say what went wrong **and what to do next**
+  (for example "no previous container; call again with previous=false"). A vague
+  error makes the model give up on that line of investigation.
+- Tool descriptions must mention non-obvious gaps in the data (for example "a
+  service with no pods is missing from the overview").
+
+## 16. Observability of the sample services
+
+- Every service exposes `/metrics` (prometheus-fastapi-instrumentator, with
+  `/health` and `/metrics` excluded) and opts in to scraping with the
+  `prometheus.io/scrape|port|path` pod annotations.
+- When a call to a dependency fails, log an error that names the dependency and
+  URL (`upstream unavailable: POST http://payment-service/payments`). A bare
+  `502` in an access log can't be traced to its cause.

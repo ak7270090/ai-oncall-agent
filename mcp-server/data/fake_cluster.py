@@ -5,8 +5,6 @@ its pods crash-loop; order-service fails downstream; user-service is healthy.
 """
 
 from datetime import datetime, timezone
-from typing import Literal
-
 from cluster.models import (
     ClusterEvent,
     Condition,
@@ -17,10 +15,6 @@ from cluster.models import (
 )
 
 NAMESPACE = "shop"
-
-Service = Literal["payment-service", "order-service", "user-service"]
-Metric = Literal["error_rate", "latency_p99_ms", "cpu_cores", "memory_mb", "request_rate"]
-
 
 def _at(hour: int, minute: int, day: int = 27) -> datetime:
     return datetime(2026, 9, day, hour, minute, tzinfo=timezone.utc)
@@ -130,27 +124,31 @@ EVENTS: list[ClusterEvent] = [
                  message="Scaled up replica set payment-service-7d9f8c6b5 to 2", count=1, last_seen=_at(9, 42)),
 ]
 
-# Last 5 samples (1-minute resolution, oldest first) per service per metric.
-METRICS: dict[str, dict[str, dict]] = {
+# Last 5 one-minute samples (oldest first) per service per metric; see observability/queries.py for units.
+METRICS_END_TIME = _at(10, 0)
+METRICS: dict[str, dict[str, list[float]]] = {
     "payment-service": {
-        "error_rate": {"unit": "ratio", "samples": [0.002, 0.003, 0.41, 0.97, 1.0]},
-        "latency_p99_ms": {"unit": "ms", "samples": [120, 118, 2400, 5000, 5000]},
-        "cpu_cores": {"unit": "cores", "samples": [0.35, 0.33, 0.05, 0.02, 0.02]},
-        "memory_mb": {"unit": "MiB", "samples": [310, 305, 90, 88, 85]},
-        "request_rate": {"unit": "req/s", "samples": [42.0, 44.0, 43.0, 41.0, 40.0]},
+        "request_rate": [42.0, 44.0, 43.0, 41.0, 40.0],
+        "error_rate": [0.002, 0.003, 0.41, 0.97, 1.0],
+        "error_count": [0, 0, 25, 58, 60],
+        "latency_p99_ms": [120, 118, 2400, 5000, 5000],
+        "cpu_cores": [0.35, 0.33, 0.05, 0.02, 0.02],
+        "memory_mb": [310, 305, 90, 88, 85],
     },
     "order-service": {
-        "error_rate": {"unit": "ratio", "samples": [0.001, 0.002, 0.18, 0.46, 0.51]},
-        "latency_p99_ms": {"unit": "ms", "samples": [95, 97, 1800, 3100, 3050]},
-        "cpu_cores": {"unit": "cores", "samples": [0.22, 0.24, 0.26, 0.25, 0.25]},
-        "memory_mb": {"unit": "MiB", "samples": [260, 262, 270, 275, 274]},
-        "request_rate": {"unit": "req/s", "samples": [38.0, 40.0, 39.0, 37.0, 38.0]},
+        "request_rate": [38.0, 40.0, 39.0, 37.0, 38.0],
+        "error_rate": [0.001, 0.002, 0.18, 0.46, 0.51],
+        "error_count": [0, 0, 7, 17, 19],
+        "latency_p99_ms": [95, 97, 1800, 3100, 3050],
+        "cpu_cores": [0.22, 0.24, 0.26, 0.25, 0.25],
+        "memory_mb": [260, 262, 270, 275, 274],
     },
     "user-service": {
-        "error_rate": {"unit": "ratio", "samples": [0.001, 0.0, 0.001, 0.0, 0.001]},
-        "latency_p99_ms": {"unit": "ms", "samples": [30, 28, 31, 29, 30]},
-        "cpu_cores": {"unit": "cores", "samples": [0.12, 0.11, 0.13, 0.12, 0.12]},
-        "memory_mb": {"unit": "MiB", "samples": [180, 181, 180, 182, 181]},
-        "request_rate": {"unit": "req/s", "samples": [65.0, 66.0, 64.0, 67.0, 65.0]},
+        "request_rate": [65.0, 66.0, 64.0, 67.0, 65.0],
+        "error_rate": [0.001, 0.0, 0.001, 0.0, 0.001],
+        "error_count": [0, 0, 0, 0, 0],
+        "latency_p99_ms": [30, 28, 31, 29, 30],
+        "cpu_cores": [0.12, 0.11, 0.13, 0.12, 0.12],
+        "memory_mb": [180, 181, 180, 182, 181],
     },
 }

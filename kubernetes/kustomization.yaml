@@ -16,10 +16,12 @@ resources:
   - deployments/user-service.yaml
   - deployments/payment-service.yaml
   - deployments/order-service.yaml
+  - deployments/traffic-generator.yaml
   - services/user-service.yaml
   - services/payment-service.yaml
   - services/order-service.yaml
   - rbac/mcp-server.yaml
+  - rbac/prometheus.yaml
 
 secretGenerator:
   - name: payment-service-secrets

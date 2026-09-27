@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MCP_", env_file=".env", extra="ignore")
 
     server_name: str = "oncall-mcp-server"
-    server_version: str = "0.6.0"
+    server_version: str = "0.7.0"
     transport: Literal["streamable-http", "stdio"] = "streamable-http"
     host: str = "127.0.0.1"
     port: int = 9000
@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     kube_request_timeout_seconds: float = 10
     allowed_namespaces: list[str] = ["shop"]
     default_namespace: str = "shop"
+
+    prometheus_url: str = "http://127.0.0.1:9090"
+    prometheus_timeout_seconds: float = 10
+    metrics_rate_window: str = "1m"
+    metrics_step_seconds: int = 60
 
 
 @lru_cache

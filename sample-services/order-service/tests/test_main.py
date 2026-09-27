@@ -46,3 +46,14 @@ def test_payment_unreachable_is_502(use_downstream):
 def test_payment_error_is_502(use_downstream):
     response = use_downstream(payment_status=500).post("/orders", json={"user_id": 1, "amount": 10})
     assert response.status_code == 502
+
+
+def test_upstream_failures_counted_as_5xx(use_downstream):
+    client = use_downstream(fail_payment=True)
+    client.post("/orders", json={"user_id": 1, "amount": 10})
+    assert 'http_requests_total{handler="/orders",method="POST",status="5xx"}' in client.get("/metrics").text
+
+
+def test_upstream_failure_is_logged_with_the_failing_url(use_downstream, caplog):
+    use_downstream(fail_payment=True).post("/orders", json={"user_id": 1, "amount": 10})
+    assert any("upstream unavailable" in r.message and "/payments" in r.message for r in caplog.records)

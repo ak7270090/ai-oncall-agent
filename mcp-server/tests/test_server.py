@@ -6,6 +6,7 @@ from config import Settings
 from server import create_server, transport_security
 
 KUBERNETES_TOOLS = {"list_pods", "get_pod_status", "get_pod_logs", "list_deployments", "get_deployment", "list_events"}
+OBSERVABILITY_TOOLS = {"get_service_overview", "get_metrics"}
 CRASHING_POD = "payment-service-7d9f8c6b5-2xkqp"
 
 pytestmark = pytest.mark.anyio
@@ -43,22 +44,17 @@ def test_health_route(server):
         assert http.get("/health").json() == {"status": "ok"}
 
 
-async def test_fake_backend_offers_kubernetes_tools_and_fake_metrics(client):
-    names = {t.name for t in (await client.list_tools()).tools}
-    assert names == KUBERNETES_TOOLS | {"get_metrics"}
-
-
-async def test_kubernetes_backend_hides_fake_metrics():
-    async with Client(create_server(Settings(_env_file=None, backend="kubernetes"))) as mcp_client:
+@pytest.mark.parametrize("backend", ["fake", "kubernetes"])
+async def test_both_backends_offer_the_same_tools(backend):
+    async with Client(create_server(Settings(_env_file=None, backend=backend))) as mcp_client:
         names = {t.name for t in (await mcp_client.list_tools()).tools}
-    assert names == KUBERNETES_TOOLS
+    assert names == KUBERNETES_TOOLS | OBSERVABILITY_TOOLS
 
 
 async def test_every_tool_is_described_and_has_output_schema(client):
     for tool in (await client.list_tools()).tools:
         assert tool.description, tool.name
-        if tool.name in KUBERNETES_TOOLS:
-            assert tool.output_schema, tool.name
+        assert tool.output_schema, tool.name
 
 
 async def test_namespace_defaults_to_configured_namespace(client):
@@ -111,6 +107,32 @@ async def test_unknown_pod_is_a_tool_error(client):
 
 async def test_log_line_limit_enforced_by_schema(client):
     await call_error(client, "get_pod_logs", {"pod": CRASHING_POD, "lines": 0})
+
+
+async def test_service_overview_flags_failing_services(client):
+    services = {s["service"]: s for s in (await call(client, "get_service_overview"))["services"]}
+    assert services["payment-service"]["error_rate"] == 1.0
+    assert services["user-service"]["error_rate"] < 0.01
+
+
+async def test_metric_history_shows_error_spike(client):
+    series = await call(client, "get_metrics", {"service": "payment-service", "metric": "error_rate"})
+    values = [s["value"] for s in series["samples"]]
+    assert values[0] < 0.01 and values[-1] == 1.0
+    assert series["unit"].startswith("ratio")
+
+
+async def test_metric_names_are_an_enum(client):
+    tools = {t.name: t for t in (await client.list_tools()).tools}
+    assert "error_count" in tools["get_metrics"].input_schema["properties"]["metric"]["enum"]
+
+
+async def test_service_name_that_could_inject_promql_is_rejected(client):
+    await call_error(client, "get_metrics", {"service": 'x",namespace="kube-system', "metric": "error_rate"})
+
+
+async def test_metrics_namespace_outside_allowlist_rejected(client):
+    assert "not allowed" in await call_error(client, "get_service_overview", {"namespace": "kube-system"})
 
 
 def test_transport_security_uses_sdk_default_without_allowed_hosts():

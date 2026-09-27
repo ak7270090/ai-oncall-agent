@@ -1,0 +1,41 @@
+# Steady synthetic load so metrics have data: one order per second for a random
+# user; user 4 doesn't exist, so a small share of requests are expected 404s.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator
+  labels:
+    app: traffic-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator
+  template:
+    metadata:
+      labels:
+        app: traffic-generator
+        version: v1
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+      containers:
+        - name: traffic-generator
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                user=$(( $(od -An -N1 -tu1 /dev/urandom) % 4 + 1 ))
+                curl -s -o /dev/null -X POST http://order-service/orders \
+                  -H "content-type: application/json" -d "{\"user_id\": $user, \"amount\": 10}"
+                sleep 1
+              done
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 50m, memory: 32Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}

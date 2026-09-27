@@ -1,16 +1,17 @@
 # AI On-Call Agent (MCP)
 
 An AI on-call assistant that investigates incidents through the Model Context
-Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–6 are done.**
+Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–7 are done.**
 Code rules are in [CODING_GUIDELINES.md](./CODING_GUIDELINES.md).
 
 ```text
- User ──HTTP──► AI server :8000 ──MCP / Streamable HTTP──► MCP server :9000 ──read-only──► kind cluster
-                FastAPI                                     list_pods                      (namespace shop)
-                LangGraph + LangChain                       get_pod_status
-                any LLM (config)                            get_pod_logs
-                MCP client                                  list/get_deployment
-                                                            list_events
+ User ──HTTP──► AI server :8000 ──MCP / Streamable HTTP──► MCP server :9000 ──read-only──► kind cluster (shop)
+                FastAPI                                     Kubernetes: list_pods,           │
+                LangGraph + LangChain                         get_pod_status, get_pod_logs,  │ scrape /metrics
+                any LLM (config)                              list/get_deployment,           ▼
+                MCP client                                    list_events                  Prometheus (monitoring)
+                                                            Metrics: get_service_overview, ◄──── PromQL
+                                                              get_metrics
 ```
 
 The two apps are fully separate. They share no code, and each has its own
@@ -24,8 +25,9 @@ ai-oncall-agent/
 ├── mcp-server/
 │   ├── server.py              create_server(): registers tools, /health route
 │   ├── config/settings.py     MCP_* settings
-│   ├── cluster/               backends: kubernetes_backend.py (real), fake_backend.py; models.py
-│   ├── tools/                 kubernetes.py (tool layer), observability.py (fake metrics)
+│   ├── cluster/               Kubernetes backends: kubernetes_backend.py (real), fake_backend.py; models.py
+│   ├── observability/         metrics backends: prometheus_backend.py, fake_backend.py; queries.py (PromQL)
+│   ├── tools/                 tool layer: kubernetes.py, observability.py, guards.py
 │   ├── data/fake_cluster.py   the fake incident
 │   └── tests/                 unit + integration/ (live kind cluster, RBAC checks)
 ├── ai-server/
@@ -36,7 +38,7 @@ ai-oncall-agent/
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
-├── kubernetes/            kind cluster config + kustomize manifests (namespace shop, rbac/)
+├── kubernetes/            kind cluster config + kustomize manifests (namespace shop, rbac/), monitoring/ (Prometheus)
 ├── docker-compose.yml     AI server + MCP server (fake data)
 ├── docker-compose.kind.yml  overlay: MCP server reads the kind cluster
 ├── Makefile               every command: make help
@@ -76,6 +78,7 @@ Everything runs through the `Makefile`; `make help` lists the targets:
 | `make up-kind` | Same, but the MCP server reads the kind cluster |
 | `make test` | Every test suite (cluster tests run only if the kind cluster is up) |
 | `make cluster-up` / `make smoke-test` / `make cluster-down` | Kind cluster with the sample services |
+| `make redeploy` | Rebuild the sample-service images and restart them in the cluster |
 | `make mcp-kubeconfig` | Fresh short-lived, read-only credentials for the MCP server |
 
 Override variables per run, e.g. `make cluster-up CLUSTER=test`.
@@ -202,13 +205,61 @@ expires.
 
 | Value | Used by | Notes |
 | --- | --- | --- |
-| `kubernetes` (default) | `make run-mcp-server`, `make up-kind` | Reads the cluster |
-| `fake` | `make up`, unit tests | The canned incident; also offers `get_metrics`, which stays fake until Prometheus in Phase 7 and is never mixed with a real cluster |
+| `kubernetes` (default) | `make run-mcp-server`, `make up-kind` | Reads the cluster and its Prometheus |
+| `fake` | `make up`, unit tests | The canned incident, for both Kubernetes and metrics tools |
 
 **Try it:** run `make cluster-up`, break something (e.g.
 `kubectl -n shop set image deploy/payment-service payment-service=payment-service:v2`),
 then `make run-mcp-server` and `make run-ai-server`, or `make up-kind`, and ask
 `/investigate` what's wrong.
+
+## Metrics with Prometheus (Phase 7)
+
+```text
+sample services ──/metrics──► Prometheus (namespace monitoring) ──HTTP API──► MCP metrics tools ──► agent
+traffic-generator ──1 order/s──► order-service ──► user-service, payment-service
+```
+
+- **Instrumentation.** Each sample service exposes `/metrics` via
+  `prometheus-fastapi-instrumentator`: request counts by route and status
+  class, a latency histogram, and process CPU and memory. Pods opt in with
+  `prometheus.io/*` annotations.
+- **Prometheus** runs in its own `monitoring` namespace. It may only discover
+  pods in `shop` (a Role, not a cluster-wide ClusterRole), keeps 6h of data,
+  and is exposed only on `http://127.0.0.1:9090` (kind port mapping).
+- **Traffic generator.** It places about one order per second (some for a
+  nonexistent user → expected 404s), so there is always data to look at.
+
+**Tools**
+
+| Tool | What the agent gets |
+| --- | --- |
+| `get_service_overview(namespace)` | Current request rate, error rate and p99 latency for every service, to find the failing one |
+| `get_metrics(service, metric, minutes)` | History of one metric (one sample per minute), to see *when* it changed |
+
+**The PromQL behind each metric** (`mcp-server/observability/queries.py`,
+with `sel` = `namespace="shop",service="…"`):
+
+| Metric | PromQL | Function learned |
+| --- | --- | --- |
+| `request_rate` | `sum(rate(http_requests_total{sel}[1m]))` | `rate`, `sum` |
+| `error_rate` | `(sum(rate(http_requests_total{sel,status="5xx"}[1m])) or vector(0)) / sum(rate(http_requests_total{sel}[1m]))` | ratio of rates |
+| `error_count` | `sum(increase(http_requests_total{sel,status="5xx"}[1m]))` | `increase` |
+| `latency_p99_ms` | `1000 * histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{sel}[1m])))` | `histogram_quantile` |
+| `cpu_cores` | `sum(rate(process_cpu_seconds_total{sel}[1m]))` | `rate` on a CPU counter |
+| `memory_mb` | `avg(process_resident_memory_bytes{sel}) / 1048576` | `avg` across pods |
+
+Open `http://127.0.0.1:9090` to try these queries yourself.
+
+**Security.** Service names are checked against a strict name pattern before
+they're put into PromQL, so a crafted name can't rewrite the query (no PromQL
+injection). The namespace allowlist applies to metrics tools too.
+
+**Try it:** run `make cluster-up`, then
+`kubectl -n shop scale deploy/payment-service --replicas=0`. Within about a
+minute order-service's error rate climbs, and its logs say
+`upstream unavailable: POST http://payment-service/payments`. Ask
+`/investigate` why checkout fails. Restore with `--replicas=2`.
 
 ## Test
 
