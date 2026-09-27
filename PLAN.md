@@ -51,7 +51,7 @@ learn MCP deeply through a real project, not to rush to a finished product.
 | 2     | AI server + MCP client        | 🔴 Now      | Done |
 | 3     | Separate HTTP communication   | 🔴 Now      | Done |
 | 4     | Docker                        | 🔴 Now      | Done |
-| 5     | Local Kubernetes (kind)       | 🔴 Now      | Not started |
+| 5     | Local Kubernetes (kind)       | 🔴 Now      | Done |
 | 6     | Real Kubernetes tools         | 🔴 Now      | Not started |
 | 7     | Prometheus                    | 🟠 Next     | Not started |
 | 8     | LangGraph investigation       | 🟠 Next     | Not started |

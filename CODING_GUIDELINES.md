@@ -7,8 +7,12 @@ message.
 ## 1. Configuration, not constants
 
 - Every value that could differ between environments (URLs, ports, model names,
-  timeouts, retry counts, limits) lives in the app's `config/settings.py`
-  (`pydantic-settings`) and can be overridden with an environment variable or `.env`.
+  timeouts, retry counts, limits) lives in the app's settings module
+  (`config/settings.py`, or `settings.py` for the single-file sample services),
+  built with `pydantic-settings` and overridable with an environment variable
+  or `.env`.
+- Script values live in a data file (`scripts/cluster.config.psd1`), not inside
+  the scripts.
 - Document every setting in that app's `.env.example`.
 - Values that define an API contract (such as a tool's maximum `lines`) are named
   module-level constants (`MAX_LOG_LINES`). Never leave an unexplained literal
@@ -121,6 +125,23 @@ message.
 - A service listening on `0.0.0.0` must keep its host validation (for example
   `MCP_ALLOWED_HOSTS`).
 - Every service has a healthcheck, and dependents wait on
-  `condition: service_healthy`. This repo uses
+  `condition: service_healthy`.
+
+## 13. Kubernetes
+
+- All manifests go through kustomize (`kubernetes/kustomization.yaml`). Add new
+  files to its `resources`.
+- Manifests are the single source of truth for image names and tags. Scripts
+  read them from `kubectl kustomize` output, never from a second copy.
+- Every Deployment has `app` and `version` labels, readiness and liveness
+  probes, resource requests and limits, `runAsNonRoot`, a read-only root
+  filesystem and all capabilities dropped.
+- Configuration comes from ConfigMaps and secrets from kustomize
+  `secretGenerator` fed by a gitignored `.env` file. Never commit a Secret
+  manifest that contains values.
+- Services find each other by Service DNS name (`http://user-service`),
+  configured through ConfigMaps.
+- After testing, delete the cluster (`scripts/cluster-down.ps1`) so it stops
+  using CPU and memory. This repo uses
   **mcp 2.x**, **LangChain 1.x** and **LangGraph 1.x**, and most examples online
   are for older versions.

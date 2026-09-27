@@ -21,6 +21,7 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-USER app
+# Numeric UID so Kubernetes `runAsNonRoot` can verify it.
+USER 10001
 EXPOSE ${APP_PORT}
 CMD ["sh", "-c", "exec python \"$APP_ENTRYPOINT\""]

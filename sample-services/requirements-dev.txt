@@ -1,0 +1,4 @@
+-r user-service/requirements.txt
+-r payment-service/requirements.txt
+-r order-service/requirements.txt
+pytest==9.1.1
