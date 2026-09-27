@@ -36,7 +36,8 @@ ai-oncall-agent/
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
 ├── kubernetes/            kind cluster config + kustomize manifests (namespace shop)
-├── scripts/               cluster-up / smoke-test / cluster-down (config: cluster.config.psd1)
+├── scripts/               cluster-up.sh / smoke-test.sh / cluster-down.sh (config: cluster.env)
+├── Makefile               make cluster-up | smoke-test | cluster-down
 ├── docker/python-service.Dockerfile   one image recipe for every Python service
 ├── docker-compose.yml
 └── CODING_GUIDELINES.md
@@ -130,14 +131,17 @@ run `wsl --shutdown` and restart Docker:
 kernelCommandLine = cgroup_no_v1=all
 ```
 
-```powershell
-.\scripts\cluster-up.ps1     # create cluster, build + load images, deploy, wait until Available
-.\scripts\smoke-test.ps1     # place an order end-to-end through the three services
-.\scripts\cluster-down.ps1   # delete the cluster (frees CPU/RAM)
+```bash
+bash scripts/cluster-up.sh     # create cluster, build + load images, deploy, wait until Available
+bash scripts/smoke-test.sh     # place an order end-to-end through the three services
+bash scripts/cluster-down.sh   # delete the cluster (frees CPU/RAM)
+# or: make cluster-up / make smoke-test / make cluster-down
 ```
 
-(If script execution is blocked, run with
-`powershell -ExecutionPolicy Bypass -File .\scripts\cluster-up.ps1`.)
+The scripts are bash, so they run on Linux, macOS and Windows. On Windows, use
+**Git Bash** (installed with Git) or WSL, for example from the VS Code terminal.
+Settings are in `scripts/cluster.env`. Override any of them for one run, e.g.
+`CLUSTER_NAME=test bash scripts/cluster-up.sh`.
 
 | Kubernetes object | Where to look |
 | --- | --- |

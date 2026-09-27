@@ -11,8 +11,8 @@ message.
   (`config/settings.py`, or `settings.py` for the single-file sample services),
   built with `pydantic-settings` and overridable with an environment variable
   or `.env`.
-- Script values live in a data file (`scripts/cluster.config.psd1`), not inside
-  the scripts.
+- Script values live in `scripts/cluster.env` (`KEY=VALUE`, overridable by
+  exported environment variables), not inside the scripts.
 - Document every setting in that app's `.env.example`.
 - Values that define an API contract (such as a tool's maximum `lines`) are named
   module-level constants (`MAX_LOG_LINES`). Never leave an unexplained literal
@@ -113,7 +113,22 @@ message.
   directly, even if it's also installed transitively.
 - Verify the API of the installed version before using it.
 
-## 12. Containers
+## 12. Scripts
+
+- Write automation scripts in bash (`scripts/*.sh`) so they run on Linux,
+  macOS and Windows (through Git Bash or WSL). Don't add PowerShell or batch
+  scripts.
+- Start each script with `source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"`,
+  which sets `set -euo pipefail`, loads config and provides `log`, `die`,
+  `require_tools` and `repo_path`.
+- Stick to POSIX tools that behave the same everywhere: no `sed -i`
+  (GNU and BSD differ), no `jq` or other tools that may not be installed, and
+  quote every variable.
+- Use `trap ... EXIT` to clean up any background process a script starts.
+- `.gitattributes` forces LF line endings for `*.sh`. CRLF breaks bash.
+- Add a `Makefile` target for each new entry-point script.
+
+## 13. Containers
 
 - Both services use the one shared `docker/python-service.Dockerfile`. Don't
   fork a Dockerfile per service unless its needs really differ.
@@ -127,7 +142,7 @@ message.
 - Every service has a healthcheck, and dependents wait on
   `condition: service_healthy`.
 
-## 13. Kubernetes
+## 14. Kubernetes
 
 - All manifests go through kustomize (`kubernetes/kustomization.yaml`). Add new
   files to its `resources`.
@@ -141,7 +156,7 @@ message.
   manifest that contains values.
 - Services find each other by Service DNS name (`http://user-service`),
   configured through ConfigMaps.
-- After testing, delete the cluster (`scripts/cluster-down.ps1`) so it stops
+- After testing, delete the cluster (`scripts/cluster-down.sh`) so it stops
   using CPU and memory. This repo uses
   **mcp 2.x**, **LangChain 1.x** and **LangGraph 1.x**, and most examples online
   are for older versions.
