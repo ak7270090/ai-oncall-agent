@@ -1,11 +1,16 @@
 from agent.chat_model import LLMError, create_chat_model
 from agent.graph import build_investigation_graph
-from agent.investigation import InvestigationResult, ToolCallRecord, run_investigation
+from agent.investigation import InvestigationResult, run_investigation
+from agent.models import Evidence, IncidentReport, IncidentScope
+from agent.toolbox import MCPToolbox
 
 __all__ = [
+    "Evidence",
+    "IncidentReport",
+    "IncidentScope",
     "InvestigationResult",
     "LLMError",
-    "ToolCallRecord",
+    "MCPToolbox",
     "build_investigation_graph",
     "create_chat_model",
     "run_investigation",

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+from agent import IncidentReport
 from config import get_settings
 
 
@@ -11,17 +12,23 @@ class InvestigateRequest(BaseModel):
     )
 
 
-class ToolCallResponse(BaseModel):
-    tool: str
+class EvidenceResponse(BaseModel):
+    """One check the investigation ran. Raw tool output is summarized in the report."""
+
+    step: str
+    source: str
     arguments: dict
-    is_error: bool
+    error: str | None = None
 
 
 class InvestigateResponse(BaseModel):
-    answer: str
-    completed: bool
+    answer: str = Field(description="The report rendered as Markdown")
+    report: IncidentReport
+    evidence: list[EvidenceResponse]
+    notes: list[str]
+    steps: list[str]
     llm_calls: int
-    tool_calls: list[ToolCallResponse]
+    follow_up_limit_reached: bool
 
 
 class ToolDescription(BaseModel):

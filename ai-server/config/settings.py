@@ -19,8 +19,15 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 120
     llm_max_retries: int = 2
 
-    max_agent_steps: int = 10
     max_question_length: int = 2000
+
+    # Investigation graph
+    default_namespace: str = "shop"
+    error_rate_threshold: float = 0.05
+    max_pods_to_inspect: int = 3
+    max_services_to_inspect: int = 3
+    log_lines: int = 50
+    max_follow_up_rounds: int = 2
 
 
 @lru_cache

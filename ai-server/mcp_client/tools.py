@@ -33,6 +33,3 @@ def to_langchain_tool(mcp_client: Client, tool: Tool) -> StructuredTool:
         handle_tool_error=True,
     )
 
-
-async def load_langchain_tools(mcp_client: Client) -> list[StructuredTool]:
-    return [to_langchain_tool(mcp_client, tool) for tool in await list_all_tools(mcp_client)]

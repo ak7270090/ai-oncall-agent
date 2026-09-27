@@ -1,17 +1,16 @@
-from dataclasses import asdict
-
 from fastapi import APIRouter
 
-from agent import build_investigation_graph, run_investigation
+from agent import MCPToolbox, build_investigation_graph, run_investigation
 from api.dependencies import ChatModelDep, MCPConnectorDep, SettingsDep
 from api.schemas import (
+    EvidenceResponse,
     InvestigateRequest,
     InvestigateResponse,
     StatusResponse,
     ToolDescription,
     ToolsResponse,
 )
-from mcp_client import list_all_tools, load_langchain_tools
+from mcp_client import list_all_tools, to_langchain_tool
 
 router = APIRouter()
 
@@ -46,7 +45,21 @@ async def investigate(
     open_mcp: MCPConnectorDep,
 ) -> InvestigateResponse:
     async with open_mcp() as mcp_client:
-        tools = await load_langchain_tools(mcp_client)
-        graph = build_investigation_graph(chat_model, tools)
-        result = await run_investigation(graph, request.question, settings.max_agent_steps)
-    return InvestigateResponse.model_validate(asdict(result))
+        tools = await list_all_tools(mcp_client)
+        graph = build_investigation_graph(
+            chat_model,
+            MCPToolbox(mcp_client, tools),
+            [to_langchain_tool(mcp_client, tool) for tool in tools],
+            settings,
+        )
+        result = await run_investigation(graph, request.question, settings.max_follow_up_rounds)
+    return InvestigateResponse(
+        answer=result.answer,
+        report=result.report,
+        evidence=[EvidenceResponse(step=e.step, source=e.source, arguments=e.arguments, error=e.error)
+                  for e in result.evidence],
+        notes=result.notes,
+        steps=result.steps,
+        llm_calls=result.llm_calls,
+        follow_up_limit_reached=result.follow_up_limit_reached,
+    )

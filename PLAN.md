@@ -54,7 +54,7 @@ learn MCP deeply through a real project, not to rush to a finished product.
 | 5     | Local Kubernetes (kind)       | 🔴 Now      | Done |
 | 6     | Real Kubernetes tools         | 🔴 Now      | Done (incl. minimal read-only RBAC) |
 | 7     | Prometheus                    | 🟠 Next     | Done (metrics tools in the existing MCP server; split out in Phase 19) |
-| 8     | LangGraph investigation       | 🟠 Next     | Not started |
+| 8     | LangGraph investigation       | 🟠 Next     | Done (hybrid: deterministic evidence + LLM reasoning) |
 | 9     | Failure simulation            | 🟠 Next     | Not started |
 | 10    | Write tools (restart/scale)   | 🟡 Later    | Not started |
 | 11    | Human-in-the-loop approval    | 🟡 Later    | Not started |

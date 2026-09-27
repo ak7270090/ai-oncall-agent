@@ -186,7 +186,24 @@ message.
 - Tool descriptions must mention non-obvious gaps in the data (for example "a
   service with no pods is missing from the overview").
 
-## 16. Observability of the sample services
+## 16. Investigation graph (AI server)
+
+- Evidence gathering that should always happen goes in deterministic graph
+  steps (`agent/evidence.py`), not in the prompt. The LLM understands the
+  question, reasons over evidence and writes the report. It doesn't decide the
+  basic checks.
+- LLM outputs that code consumes are typed with `with_structured_output(Model)`
+  (`IncidentScope`, `IncidentReport`). Never parse free text.
+- Every tool call is recorded as `Evidence` (with its error, if any) and
+  returned by the API. A failed check is evidence, not an exception.
+- Loops are capped by config (`MAX_FOLLOW_UP_ROUNDS`), and the response says
+  when a cap was hit.
+- A missing MCP tool degrades the investigation (step skipped and noted); it
+  never breaks it.
+- The graph depends on MCP tool names and result fields. Change them in
+  `mcp-server` only together with `agent/evidence.py` and `tests/fakes.py`.
+
+## 17. Observability of the sample services
 
 - Every service exposes `/metrics` (prometheus-fastapi-instrumentator, with
   `/health` and `/metrics` excluded) and opts in to scraping with the

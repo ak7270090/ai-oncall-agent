@@ -1,7 +1,7 @@
 # AI On-Call Agent (MCP)
 
 An AI on-call assistant that investigates incidents through the Model Context
-Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–7 are done.**
+Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–8 are done.**
 Code rules are in [CODING_GUIDELINES.md](./CODING_GUIDELINES.md).
 
 ```text
@@ -33,7 +33,8 @@ ai-oncall-agent/
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
 │   ├── api/                   routes, schemas, dependencies
-│   ├── agent/                 chat_model.py, graph.py, investigation.py, prompts.py
+│   ├── agent/                 graph.py (investigation flow), evidence.py (deterministic checks),
+│   │                          toolbox.py, models.py, prompts.py, report.py, chat_model.py
 │   ├── mcp_client/            connection.py, tools.py (MCP → LangChain adapter)
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
@@ -121,7 +122,7 @@ make run-ai-server    # terminal 2: http://127.0.0.1:8000 (Swagger UI at /docs)
 | `GET /health` | Liveness check for the AI server only |
 | `GET /ready` | Confirms the MCP server is reachable (runs `tools/list`) |
 | `GET /tools` | Lists the tools the MCP server advertises |
-| `POST /investigate` | `{"question": "..."}` → report and the tool calls made to produce it |
+| `POST /investigate` | `{"question": "..."}` → structured incident report, Markdown version, every check that ran, graph steps |
 
 Errors: MCP server unreachable → `503`; LLM provider failure → `502` (details go
 to the server log only).
@@ -276,14 +277,45 @@ This expects three virtualenvs: `mcp-server/.venv`, `ai-server/.venv` and
 - `ai-server/tests/integration/` starts the real MCP server as a separate
   process on a free port and tests the Streamable HTTP transport.
 
-## How an investigation runs
+## How an investigation runs (Phase 8)
 
-1. `POST /investigate` opens an MCP session (`connect_to_mcp`).
-2. `tools/list` → each MCP tool becomes a LangChain tool (`mcp_client/tools.py`).
-3. The LangGraph graph alternates between two nodes: `call_model` (the LLM with
-   the tools bound) and `call_tools` (LangGraph `ToolNode`, which calls MCP
-   `tools/call`). It stops when the model answers or after `MAX_AGENT_STEPS`.
-4. Tool errors go back to the model as error messages so it can recover.
+A LangGraph state machine. **Code decides which checks run; the LLM
+understands, reasons and writes.** The same essential checks happen every
+time, and a typical investigation costs 3 LLM calls.
+
+```text
+START → understand → sweep → focus → follow_dependencies → correlate ⇄ follow_up (≤ MAX_FOLLOW_UP_ROUNDS)
+                                                                └──→ report → END
+```
+
+| Step | Who | What |
+| --- | --- | --- |
+| `understand` | LLM (structured output) | `IncidentScope`: namespace, suspected services, symptom, time window |
+| `sweep` | Code, in parallel | `get_service_overview`, `list_pods`, `list_events` (warnings), `list_deployments` |
+| `focus` | Code | Unhealthy pods → status and logs (`previous=true` if the pod restarted). Services above `ERROR_RATE_THRESHOLD` → error-rate history, plus logs from one pod even if it looks healthy. Deployments not fully ready or scaled to 0 → rollout history |
+| `follow_dependencies` | Code | Error log lines naming an upstream (`upstream unavailable: POST http://payment-service/…`) → check that service's pods and deployment |
+| `correlate` | LLM + tools | Reasons over all the evidence (JSON). May request up to `MAX_FOLLOW_UP_ROUNDS` rounds of extra tool calls |
+| `report` | LLM (structured output) | `IncidentReport`: incident, impact, cited evidence, likely cause, confidence, recommended actions, timeline |
+
+If an MCP tool is missing (e.g. no metrics), its step is skipped and noted.
+A tool that fails becomes evidence (with its error) rather than stopping the
+investigation. Thresholds and limits are in `ai-server/.env` (see
+`.env.example`).
+
+**Response** of `POST /investigate`:
+
+```json
+{
+  "answer": "**Incident:** ... (the report as Markdown)",
+  "report": {"incident": "...", "impact": "...", "evidence": [{"source": "get_pod_logs", "finding": "..."}],
+             "likely_cause": "...", "confidence": "high", "recommended_actions": ["..."], "timeline": ["..."]},
+  "evidence": [{"step": "focus", "source": "get_pod_logs", "arguments": {"pod": "..."}, "error": null}],
+  "notes": ["follow_dependencies: logs point at payment-service"],
+  "steps": ["understand", "sweep", "focus", "follow_dependencies", "correlate", "report"],
+  "llm_calls": 3,
+  "follow_up_limit_reached": false
+}
+```
 
 ## MCP concepts used
 

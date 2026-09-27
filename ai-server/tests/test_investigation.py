@@ -1,52 +1,104 @@
 import pytest
 
-from agent import ToolCallRecord, build_investigation_graph, run_investigation
-from agent.investigation import INCOMPLETE_ANSWER
-from mcp_client import load_langchain_tools
-from tests.fakes import (build_fake_mcp_server, endless_tool_calls_model, fake_connector,
+from agent import Evidence, MCPToolbox, build_investigation_graph, run_investigation
+from agent.evidence import upstream_services
+from agent.report import render_markdown
+from config import Settings
+from mcp_client import list_all_tools, to_langchain_tool
+from tests.fakes import (PAYMENT_CRASHLOOP, PAYMENT_DOWN, build_fake_mcp_server, fake_connector, report,
                          scripted_model, tool_call_message)
 
 pytestmark = pytest.mark.anyio
-MAX_AGENT_STEPS = 4
+SETTINGS = Settings(_env_file=None, max_follow_up_rounds=2)
+EXPECTED_STEPS = ["understand", "sweep", "focus", "follow_dependencies", "correlate", "report"]
 
 
-async def investigate_with(chat_model, question="Why is checkout failing?"):
-    async with fake_connector(build_fake_mcp_server())() as mcp_client:
-        graph = build_investigation_graph(chat_model, await load_langchain_tools(mcp_client))
-        return await run_investigation(graph, question, MAX_AGENT_STEPS)
+async def investigate(chat_model, scenario=PAYMENT_DOWN, with_metrics=True):
+    async with fake_connector(build_fake_mcp_server(scenario, with_metrics))() as mcp_client:
+        tools = await list_all_tools(mcp_client)
+        graph = build_investigation_graph(
+            chat_model, MCPToolbox(mcp_client, tools), [to_langchain_tool(mcp_client, t) for t in tools], SETTINGS
+        )
+        return await run_investigation(graph, "Checkout is failing", SETTINGS.max_follow_up_rounds)
 
 
-async def test_answers_without_tools():
-    result = await investigate_with(scripted_model("All good."))
-    assert (result.answer, result.completed, result.llm_calls, result.tool_calls) == (
-        "All good.", True, 1, []
+def calls(result, source: str, step: str | None = None) -> list[Evidence]:
+    return [e for e in result.evidence if e.source == source and (step is None or e.step == step)]
+
+
+async def test_runs_every_step_with_three_llm_calls():
+    result = await investigate(scripted_model())
+    assert result.steps == EXPECTED_STEPS
+    assert result.llm_calls == 3
+    assert result.report.confidence == "high"
+    assert "**Likely cause** (high confidence)" in result.answer
+
+
+async def test_sweep_covers_the_whole_namespace():
+    result = await investigate(scripted_model())
+    swept = {e.source for e in result.evidence if e.step == "sweep"}
+    assert swept == {"get_service_overview", "list_pods", "list_events", "list_deployments"}
+
+
+async def test_failing_service_logs_are_read_even_when_its_pods_look_healthy():
+    result = await investigate(scripted_model())
+    [logs] = calls(result, "get_pod_logs", "focus")
+    assert logs.arguments["pod"] == "order-service-a" and logs.arguments["previous"] is False
+    assert calls(result, "get_metrics", "focus")[0].arguments["service"] == "order-service"
+
+
+async def test_upstream_named_in_logs_is_investigated():
+    result = await investigate(scripted_model())
+    followed = {(e.source, e.arguments.get("app") or e.arguments.get("name"))
+                for e in result.evidence if e.step == "follow_dependencies"}
+    assert ("list_pods", "payment-service") in followed
+    assert any("payment-service" in note for note in result.notes)
+
+
+async def test_crash_looping_pod_gets_previous_logs_and_rollout_history():
+    result = await investigate(scripted_model(), scenario=PAYMENT_CRASHLOOP)
+    logs = [e for e in calls(result, "get_pod_logs", "focus") if e.arguments["pod"] == "payment-service-x"]
+    assert logs[0].arguments["previous"] is True
+    assert "exit code 1" in logs[0].result["lines"]
+    assert calls(result, "get_deployment", "focus")[0].arguments["name"] == "payment-service"
+
+
+async def test_missing_metrics_tools_are_skipped_not_fatal():
+    result = await investigate(scripted_model(), with_metrics=False)
+    assert any("skipped get_service_overview" in note for note in result.notes)
+    assert result.report is not None
+
+
+async def test_tool_errors_are_kept_as_evidence():
+    scenario = {**PAYMENT_CRASHLOOP, "previous_logs": {}}
+    result = await investigate(scripted_model(), scenario=scenario)
+    failed = [e for e in calls(result, "get_pod_logs") if e.error]
+    assert failed and "no previous" in failed[0].error
+
+
+async def test_follow_up_requests_add_evidence_and_are_capped():
+    model = scripted_model(
+        tool_call_message(("get_pod_status", {"pod": "order-service-a"})),
+        tool_call_message(("list_pods", {"app": "user-service"})),
+        tool_call_message(("list_events", {})),
     )
+    result = await investigate(model)
+    assert [e.source for e in result.evidence if e.step == "follow_up"] == ["get_pod_status", "list_pods"]
+    assert result.follow_up_limit_reached
+    assert result.steps.count("follow_up") == SETTINGS.max_follow_up_rounds
+    assert result.llm_calls == 1 + 3 + 1
 
 
-async def test_tool_results_reach_the_model_and_are_recorded():
-    result = await investigate_with(scripted_model(
-        tool_call_message(("get_pod_status", {"service": "payment-service"})),
-        "Payment pods are crash-looping.",
-    ))
-    assert result.answer == "Payment pods are crash-looping."
-    assert result.llm_calls == 2
-    assert result.tool_calls == [
-        ToolCallRecord(tool="get_pod_status", arguments={"service": "payment-service"}, is_error=False)
-    ]
+def test_upstream_detection_ignores_unknown_hosts_and_non_error_lines():
+    evidence = [Evidence(source="get_pod_logs", arguments={}, step="focus", result={"lines": [
+        "ERROR upstream unavailable: POST http://payment-service/payments",
+        "INFO fetched http://user-service/users/1",
+        "ERROR upstream unavailable: GET http://example.com/x",
+    ]})]
+    assert upstream_services(evidence, {"payment-service", "user-service"}) == {"payment-service"}
 
 
-async def test_parallel_and_failing_tool_calls():
-    result = await investigate_with(scripted_model(
-        tool_call_message(("get_pod_status", {"service": "a"}), ("get_logs", {"service": "a"})),
-        "done",
-    ))
-    assert [(c.tool, c.is_error) for c in result.tool_calls] == [
-        ("get_pod_status", False), ("get_logs", True)
-    ]
-
-
-async def test_stops_at_step_limit():
-    result = await investigate_with(endless_tool_calls_model())
-    assert result.completed is False
-    assert result.answer == INCOMPLETE_ANSWER
-    assert result.llm_calls == MAX_AGENT_STEPS
+def test_markdown_report_has_every_section():
+    markdown = render_markdown(report())
+    for heading in ("**Incident:**", "**Impact:**", "**Evidence:**", "**Likely cause**", "**Recommended action:**", "**Timeline:**"):
+        assert heading in markdown
