@@ -11,8 +11,8 @@ message.
   (`config/settings.py`, or `settings.py` for the single-file sample services),
   built with `pydantic-settings` and overridable with an environment variable
   or `.env`.
-- Script values live in `scripts/cluster.env` (`KEY=VALUE`, overridable by
-  exported environment variables), not inside the scripts.
+- Automation values are variables at the top of the `Makefile` (`?=`, so
+  `make <target> VAR=value` can override them), not literals inside recipes.
 - Document every setting in that app's `.env.example`.
 - Values that define an API contract (such as a tool's maximum `lines`) are named
   module-level constants (`MAX_LOG_LINES`). Never leave an unexplained literal
@@ -111,27 +111,29 @@ message.
   the Docker image installs. Test and dev tools go in `requirements-dev.txt`
   (`-r requirements.txt` + extras). List every package the code imports
   directly, even if it's also installed transitively.
-- Verify the API of the installed version before using it.
+- Verify the API of the installed version before using it. This repo uses
+  **mcp 2.x**, **LangChain 1.x** and **LangGraph 1.x**, and most examples online
+  are for older versions.
 
-## 12. Scripts
+## 12. Automation (Makefile)
 
-- Write automation scripts in bash (`scripts/*.sh`) so they run on Linux,
-  macOS and Windows (through Git Bash or WSL). Don't add PowerShell or batch
-  scripts.
-- Start each script with `source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"`,
-  which sets `set -euo pipefail`, loads config and provides `log`, `die`,
-  `require_tools` and `repo_path`.
-- Stick to POSIX tools that behave the same everywhere: no `sed -i`
-  (GNU and BSD differ), no `jq` or other tools that may not be installed, and
-  quote every variable.
-- Use `trap ... EXIT` to clean up any background process a script starts.
-- `.gitattributes` forces LF line endings for `*.sh`. CRLF breaks bash.
-- Add a `Makefile` target for each new entry-point script.
+- Every developer command is a `Makefile` target (`make help` lists them).
+  Don't add separate shell, PowerShell or batch scripts.
+- Keep recipes to plain commands that run in any POSIX shell (Linux, macOS,
+  Git Bash on Windows): no `sed -i` (GNU and BSD differ), no `jq`, no
+  OS-specific branches beyond the `VENV_BIN` variable.
+- If a recipe grows real logic, move it into a small Python script rather
+  than writing complex shell.
+- Fix machine-specific setup (PATH order, tool installs) once on the machine
+  and document it in the README. Don't add workarounds to the repo.
+- `.gitattributes` keeps the Makefile on LF line endings.
 
 ## 13. Containers
 
-- Both services use the one shared `docker/python-service.Dockerfile`. Don't
-  fork a Dockerfile per service unless its needs really differ.
+- Each service has its own `Dockerfile` in its folder, so Compose and
+  `docker build` use just `build: ./<service>`. Keep them identical in shape:
+  slim base, non-root numeric `USER 10001`, requirements installed before the
+  code is copied.
 - Images run as a non-root user and never contain `.env`, tests or dev
   dependencies. Keep each service's `.dockerignore` up to date.
 - Secrets reach containers at runtime (`env_file`), never at build time.
@@ -146,8 +148,8 @@ message.
 
 - All manifests go through kustomize (`kubernetes/kustomization.yaml`). Add new
   files to its `resources`.
-- Manifests are the single source of truth for image names and tags. Scripts
-  read them from `kubectl kustomize` output, never from a second copy.
+- Image tags live in the manifests and in the Makefile's `TAG` variable. Change
+  both together.
 - Every Deployment has `app` and `version` labels, readiness and liveness
   probes, resource requests and limits, `runAsNonRoot`, a read-only root
   filesystem and all capabilities dropped.
@@ -156,7 +158,5 @@ message.
   manifest that contains values.
 - Services find each other by Service DNS name (`http://user-service`),
   configured through ConfigMaps.
-- After testing, delete the cluster (`scripts/cluster-down.sh`) so it stops
-  using CPU and memory. This repo uses
-  **mcp 2.x**, **LangChain 1.x** and **LangGraph 1.x**, and most examples online
-  are for older versions.
+- After testing, run `make cluster-down` so the cluster stops using CPU and
+  memory.
