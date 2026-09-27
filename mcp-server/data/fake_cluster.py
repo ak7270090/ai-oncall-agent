@@ -128,6 +128,7 @@ EVENTS: list[ClusterEvent] = [
 METRICS_END_TIME = _at(10, 0)
 METRICS: dict[str, dict[str, list[float]]] = {
     "payment-service": {
+        "cpu_throttled_ratio": [0.0, 0.0, 0.0, 0.0, 0.0],
         "request_rate": [42.0, 44.0, 43.0, 41.0, 40.0],
         "error_rate": [0.002, 0.003, 0.41, 0.97, 1.0],
         "error_count": [0, 0, 25, 58, 60],
@@ -136,6 +137,7 @@ METRICS: dict[str, dict[str, list[float]]] = {
         "memory_mb": [310, 305, 90, 88, 85],
     },
     "order-service": {
+        "cpu_throttled_ratio": [0.0, 0.01, 0.02, 0.02, 0.01],
         "request_rate": [38.0, 40.0, 39.0, 37.0, 38.0],
         "error_rate": [0.001, 0.002, 0.18, 0.46, 0.51],
         "error_count": [0, 0, 7, 17, 19],
@@ -144,6 +146,7 @@ METRICS: dict[str, dict[str, list[float]]] = {
         "memory_mb": [260, 262, 270, 275, 274],
     },
     "user-service": {
+        "cpu_throttled_ratio": [0.0, 0.0, 0.0, 0.0, 0.0],
         "request_rate": [65.0, 66.0, 64.0, 67.0, 65.0],
         "error_rate": [0.001, 0.0, 0.001, 0.0, 0.001],
         "error_count": [0, 0, 0, 0, 0],

@@ -27,8 +27,22 @@ class EvidenceCitation(BaseModel):
     finding: str = Field(description="The concrete observation, quoting values/log lines")
 
 
+CauseCategory = Literal[
+    "dependency_unavailable",  # something a service calls is down / has no pods / refuses connections
+    "bad_deployment",          # a recent rollout introduced the failure
+    "crash_loop",              # containers keep crashing (startup failure, bad config, OOM)
+    "resource_exhaustion",     # CPU/memory at or near limits (throttling, OOM)
+    "slow_dependency",         # a dependency answers but too slowly
+    "no_incident",             # evidence shows everything healthy
+    "other",
+]
+
+
 class IncidentReport(BaseModel):
     incident: str = Field(description="One line: what is broken")
+    cause_category: CauseCategory = Field(description="Which kind of failure the ROOT cause is (not the symptom)")
+    root_cause_service: str | None = Field(
+        description="Service/deployment where the root cause lies (e.g. payments-db), not the one showing symptoms; null if unknown")
     impact: str = Field(description="Who/what is affected")
     evidence: list[EvidenceCitation]
     likely_cause: str

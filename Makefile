@@ -5,7 +5,10 @@ TAG             ?= v1
 ROLLOUT_TIMEOUT ?= 180s
 SMOKE_IMAGE     ?= curlimages/curl:8.10.1
 SERVICES        := user-service payment-service order-service
-SECRET_ENV      := kubernetes/secrets/payment-service.env
+BASE_DIR        := kubernetes/base
+SECRET_ENVS     := $(BASE_DIR)/secrets/payment-service.env $(BASE_DIR)/secrets/payments-db.env
+SCENARIO_TAG    ?= v2
+SCENARIOS       := $(notdir $(wildcard kubernetes/scenarios/*))
 PYTHON_APPS     := mcp-server ai-server sample-services
 PYTHON          ?= $(if $(filter Windows_NT,$(OS)),python,python3)
 VENV_BIN        := $(if $(filter Windows_NT,$(OS)),Scripts,bin)
@@ -14,7 +17,7 @@ MCP_TOKEN_TTL   ?= 24h
 KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
 COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f docker-compose.yml -f docker-compose.kind.yml
 
-.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig
+.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig scenario scenario-reset eval
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
@@ -28,6 +31,9 @@ help:
 	@echo "smoke-test          place an order through order-service inside the cluster"
 	@echo "mcp-kubeconfig      fresh read-only credentials for the MCP server (token TTL $(MCP_TOKEN_TTL))"
 	@echo "cluster-down        delete the kind cluster"
+	@echo "scenario NAME=x     inject an incident: $(SCENARIOS)"
+	@echo "scenario-reset      back to the healthy base manifests"
+	@echo "eval [NAME=a,b]     run scenarios end to end and grade the agent (needs cluster + both servers)"
 
 setup:
 	for app in $(PYTHON_APPS); do \
@@ -60,12 +66,12 @@ test:
 	cd ai-server && .venv/$(VENV_BIN)/python -m pytest -q
 	for svc in $(SERVICES); do (cd sample-services/$$svc && ../.venv/$(VENV_BIN)/python -m pytest -q) || exit 1; done
 
-cluster-up: $(SECRET_ENV)
+cluster-up: $(SECRET_ENVS)
 	kind get clusters | grep -qx $(CLUSTER) || kind create cluster --name $(CLUSTER) --config kubernetes/kind-cluster.yaml
 	kubectl config use-context kind-$(CLUSTER)
 	$(MAKE) images
 	kubectl apply -k kubernetes/monitoring
-	kubectl apply -k kubernetes
+	kubectl apply -k $(BASE_DIR)
 	kubectl wait deployment --all -n $(NAMESPACE) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
 	kubectl wait deployment --all -n $(MONITORING_NS) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
 	kubectl get deployments,pods,services -n $(NAMESPACE)
@@ -77,6 +83,9 @@ images:
 		docker build -q -t $$svc:$(TAG) sample-services/$$svc && \
 		kind load docker-image $$svc:$(TAG) --name $(CLUSTER) || exit 1; \
 	done
+	# The bad-deploy scenario's "new version": same code, FAULT_MODE set by the scenario.
+	docker tag payment-service:$(TAG) payment-service:$(SCENARIO_TAG)
+	kind load docker-image payment-service:$(SCENARIO_TAG) --name $(CLUSTER)
 
 # Same tag, new image: pods only pick it up after a restart.
 redeploy: images
@@ -100,14 +109,25 @@ mcp-kubeconfig:
 	done
 	@echo "wrote $(MCP_KUBE_DIR)/config and config.internal (expire in $(MCP_TOKEN_TTL))"
 
-# Generated once with a random dev key; gitignored.
-$(SECRET_ENV):
-	sed "s/^PAYMENT_API_KEY=.*/PAYMENT_API_KEY=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')/" $@.example > $@
+# Secret env files: generated once from their .example with a random value; gitignored.
+%.env: %.env.example
+	test -f $@ || sed "s/=$$/=$$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')/" $< > $@
 
 smoke-test:
 	kubectl run smoke-test -n $(NAMESPACE) --rm -i --quiet --restart=Never --image=$(SMOKE_IMAGE) -- \
 		curl -sS --fail -X POST http://order-service/orders \
 		-H "content-type: application/json" -d '{"user_id": 1, "amount": 42.5}'
+
+scenario:
+	@test -n "$(NAME)" || (echo "usage: make scenario NAME=<$(SCENARIOS)>" && exit 1)
+	kubectl apply -k kubernetes/scenarios/$(NAME)
+
+scenario-reset:
+	kubectl apply -k $(BASE_DIR)
+	kubectl wait deployment --all -n $(NAMESPACE) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
+
+eval:
+	cd evals && $(PYTHON) run_eval.py $(if $(NAME),--only $(NAME))
 
 cluster-down:
 	kind delete cluster --name $(CLUSTER)

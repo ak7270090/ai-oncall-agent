@@ -39,6 +39,8 @@ spec:
                 name: payment-service-config
             - secretRef:
                 name: payment-service-secrets
+            - secretRef:
+                name: payments-db-secrets
           readinessProbe:
             httpGet: {path: /health, port: http}
             periodSeconds: 5

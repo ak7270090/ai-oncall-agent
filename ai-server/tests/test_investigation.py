@@ -1,7 +1,7 @@
 import pytest
 
 from agent import Evidence, MCPToolbox, build_investigation_graph, run_investigation
-from agent.evidence import upstream_services
+from agent.evidence import upstream_services, without_routine_startup_events
 from agent.report import render_markdown
 from config import Settings
 from mcp_client import list_all_tools, to_langchain_tool
@@ -90,15 +90,50 @@ async def test_follow_up_requests_add_evidence_and_are_capped():
 
 
 def test_upstream_detection_ignores_unknown_hosts_and_non_error_lines():
-    evidence = [Evidence(source="get_pod_logs", arguments={}, step="focus", result={"lines": [
+    evidence = [Evidence(source="get_pod_logs", arguments={"pod": "order-service-a"}, step="focus", result={"lines": [
         "ERROR upstream unavailable: POST http://payment-service/payments",
         "INFO fetched http://user-service/users/1",
         "ERROR upstream unavailable: GET http://example.com/x",
     ]})]
-    assert upstream_services(evidence, {"payment-service", "user-service"}) == {"payment-service"}
+    assert upstream_services(evidence, {"payment-service", "user-service", "order-service"}) == {"payment-service"}
+
+
+def test_upstream_detection_finds_non_http_dependencies_but_not_the_pods_own_service():
+    evidence = [Evidence(source="get_pod_logs", arguments={"pod": "payment-service-7f-x"}, step="focus", result={"lines": [
+        "ERROR database unavailable: payments-db:5432 (connection refused)",
+        "ERROR payment-service could not connect to payments-db",
+    ]})]
+    assert upstream_services(evidence, {"payments-db", "payment-service"}) == {"payments-db"}
+
+
+async def test_slow_service_gets_latency_cpu_and_pod_limits():
+    scenario = {**PAYMENT_DOWN, "overview": [
+        {"service": "user-service", "request_rate_per_second": 1.0, "error_rate": 0.0, "latency_p99_ms": 2500},
+    ]}
+    result = await investigate(scripted_model(), scenario=scenario)
+    metrics = {e.arguments["metric"] for e in calls(result, "get_metrics", "focus")}
+    assert {"latency_p99_ms", "cpu_cores"} <= metrics
+    assert calls(result, "get_pod_status", "focus")[0].arguments["pod"] == "user-service-a"
 
 
 def test_markdown_report_has_every_section():
     markdown = render_markdown(report())
-    for heading in ("**Incident:**", "**Impact:**", "**Evidence:**", "**Likely cause**", "**Recommended action:**", "**Timeline:**"):
+    for heading in ("**Incident:**", "**Impact:**", "**Evidence:**", "**Likely cause**", "**Root cause:**",
+                    "**Recommended action:**", "**Timeline:**"):
         assert heading in markdown
+
+
+def test_routine_startup_probe_failures_are_hidden_but_real_ones_kept():
+    pods = [
+        {"name": "ready-pod", "ready": True, "restarts": 0},
+        {"name": "crashing-pod", "ready": False, "restarts": 5},
+    ]
+    events = [
+        {"reason": "Unhealthy", "object": "Pod/ready-pod"},
+        {"reason": "Unhealthy", "object": "Pod/replaced-pod"},
+        {"reason": "Unhealthy", "object": "Pod/crashing-pod"},
+        {"reason": "BackOff", "object": "Pod/crashing-pod"},
+    ]
+    kept, dropped = without_routine_startup_events(events, pods)
+    assert dropped == 2
+    assert [e["object"] for e in kept] == ["Pod/crashing-pod", "Pod/crashing-pod"]

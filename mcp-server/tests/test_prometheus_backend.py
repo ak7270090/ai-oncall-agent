@@ -2,7 +2,7 @@ import httpx2
 import pytest
 
 from observability import MetricsError, PrometheusBackend
-from observability.queries import build_query, label_selector
+from observability.queries import build_query
 
 BASE_URL = "http://prometheus.test"
 
@@ -70,12 +70,13 @@ def test_unreachable_prometheus_is_reported():
     ("error_rate", 'status="5xx"'),
     ("error_count", "increase("),
     ("latency_p99_ms", "histogram_quantile(0.99, sum by (le)"),
-    ("cpu_cores", "process_cpu_seconds_total"),
+    ("cpu_cores", "avg(rate(process_cpu_seconds_total"),
+    ("cpu_throttled_ratio", 'container_cpu_cfs_throttled_periods_total{namespace="shop",container="svc"}'),
     ("memory_mb", "avg(process_resident_memory_bytes"),
 ])
 def test_queries_use_expected_promql(metric, expected_fragment):
-    assert expected_fragment in build_query(metric, label_selector("shop", "svc"), "1m")
+    assert expected_fragment in build_query(metric, "shop", "svc", "1m")
 
 
 def test_grouped_latency_keeps_service_and_le():
-    assert "sum by (service, le)" in build_query("latency_p99_ms", label_selector("shop"), "1m", group_by=("service",))
+    assert "sum by (service, le)" in build_query("latency_p99_ms", "shop", None, "1m", group_by=("service",))

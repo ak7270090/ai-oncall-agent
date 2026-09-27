@@ -1,0 +1,13 @@
+# A config change drops payment-service's API key Secret: every pod fails at startup.
+# Recreate replaces all pods at once, as some teams configure it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+patches:
+  - target: {kind: Deployment, name: payment-service}
+    patch: |-
+      - op: replace
+        path: /spec/strategy
+        value: {type: Recreate}
+      - op: remove
+        path: /spec/template/spec/containers/0/envFrom/1

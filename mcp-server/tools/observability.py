@@ -36,7 +36,10 @@ def build_observability_tools(backend: MetricsBackend, settings: Settings) -> li
         """History of one metric for a service, one sample per step, oldest first. Use it to
         see when a problem started (e.g. error_rate jumping after a deploy).
         Metrics: request_rate (req/s), error_rate (0-1 share of 5xx), error_count (5xx per
-        window), latency_p99_ms, cpu_cores, memory_mb (per pod). Empty samples = no data."""
+        window), latency_p99_ms, cpu_cores and memory_mb (both per pod; compare
+        with the limits from get_pod_status), cpu_throttled_ratio (share of time the
+        container was held at its CPU limit: high values mean CPU-starved even when
+        average cpu_cores looks low). Empty samples = no data."""
         require_allowed(namespace)
         return MetricSeries(
             namespace=namespace,

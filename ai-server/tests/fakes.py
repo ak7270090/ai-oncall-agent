@@ -123,7 +123,8 @@ def scope(*suspected: str) -> IncidentScope:
 
 def report(cause: str = "payment-service has no pods") -> IncidentReport:
     return IncidentReport(
-        incident="Checkout failing", impact="Orders fail",
+        incident="Checkout failing", cause_category="dependency_unavailable", root_cause_service="payment-service",
+        impact="Orders fail",
         evidence=[EvidenceCitation(source="get_pod_logs", finding="upstream unavailable: payment-service")],
         likely_cause=cause, confidence="high", recommended_actions=["Scale payment-service back up"],
         timeline=["10:00 error rate rises"],

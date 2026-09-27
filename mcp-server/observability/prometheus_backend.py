@@ -5,7 +5,7 @@ import httpx2
 
 from observability.backend import MetricsError
 from observability.models import MetricSample, ServiceHealth
-from observability.queries import Metric, build_query, label_selector
+from observability.queries import Metric, build_query
 
 VALUE_DECIMALS = 4
 OVERVIEW_METRICS: tuple[Metric, ...] = ("request_rate", "error_rate", "latency_p99_ms")
@@ -46,7 +46,7 @@ class PrometheusBackend:
     def metric_history(self, namespace: str, service: str, metric: Metric, minutes: int) -> list[MetricSample]:
         end = datetime.now(timezone.utc)
         start = end - timedelta(minutes=minutes)
-        query = build_query(metric, label_selector(namespace, service), self._window)
+        query = build_query(metric, namespace, service, self._window)
         series = self._get("/api/v1/query_range", {
             "query": query, "start": start.timestamp(), "end": end.timestamp(), "step": self._step_seconds,
         })
@@ -60,7 +60,7 @@ class PrometheusBackend:
     def service_overview(self, namespace: str) -> list[ServiceHealth]:
         values: dict[str, dict[str, float | None]] = {}
         for metric in OVERVIEW_METRICS:
-            query = build_query(metric, label_selector(namespace), self._window, group_by=("service",))
+            query = build_query(metric, namespace, None, self._window, group_by=("service",))
             for series in self._get("/api/v1/query", {"query": query}):
                 service = series["metric"].get("service", "unknown")
                 values.setdefault(service, {})[metric] = _parse_value(series["value"][1])

@@ -17,6 +17,7 @@ resources:
   - deployments/payment-service.yaml
   - deployments/order-service.yaml
   - deployments/traffic-generator.yaml
+  - deployments/payments-db.yaml
   - services/user-service.yaml
   - services/payment-service.yaml
   - services/order-service.yaml
@@ -27,3 +28,6 @@ secretGenerator:
   - name: payment-service-secrets
     envs:
       - secrets/payment-service.env
+  - name: payments-db-secrets
+    envs:
+      - secrets/payments-db.env

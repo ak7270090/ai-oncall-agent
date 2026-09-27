@@ -4,3 +4,7 @@ metadata:
   name: payment-service-config
 data:
   PAYMENT_PROVIDER: fakepay
+  DB_HOST: payments-db
+  DB_PORT: "5432"
+  DB_NAME: payments
+  DB_USER: payments

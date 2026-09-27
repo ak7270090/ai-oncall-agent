@@ -1,0 +1,10 @@
+# The payments database is gone: payment-service returns 503, order-service 502.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+patches:
+  - target: {kind: Deployment, name: payments-db}
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0

@@ -42,7 +42,17 @@ def _condition(raw) -> Condition:
     return Condition(type=raw.type, status=raw.status, reason=raw.reason, message=raw.message)
 
 
-def _container_status(raw, image: str) -> ContainerStatus:
+def _resources(container) -> dict[str, str | None]:
+    resources = container.resources if container else None
+    requests = (resources.requests if resources else None) or {}
+    limits = (resources.limits if resources else None) or {}
+    return {
+        "cpu_request": requests.get("cpu"), "cpu_limit": limits.get("cpu"),
+        "memory_request": requests.get("memory"), "memory_limit": limits.get("memory"),
+    }
+
+
+def _container_status(raw, spec) -> ContainerStatus:
     state, reason, message = "unknown", None, None
     if raw.state and raw.state.running:
         state = "running"
@@ -53,7 +63,7 @@ def _container_status(raw, image: str) -> ContainerStatus:
     last = raw.last_state.terminated if raw.last_state else None
     return ContainerStatus(
         name=raw.name,
-        image=image,
+        image=spec.image if spec else "",
         ready=bool(raw.ready),
         restart_count=raw.restart_count or 0,
         state=state,
@@ -61,12 +71,13 @@ def _container_status(raw, image: str) -> ContainerStatus:
         message=message,
         last_termination_reason=last.reason if last else None,
         last_exit_code=last.exit_code if last else None,
+        **_resources(spec),
     )
 
 
 def _pod_detail(raw) -> PodDetail:
     labels = raw.metadata.labels or {}
-    images = {c.name: c.image for c in raw.spec.containers}
+    specs = {c.name: c for c in raw.spec.containers}
     return PodDetail(
         name=raw.metadata.name,
         namespace=raw.metadata.namespace,
@@ -76,7 +87,7 @@ def _pod_detail(raw) -> PodDetail:
         node=raw.spec.node_name,
         created_at=raw.metadata.creation_timestamp,
         conditions=[_condition(c) for c in raw.status.conditions or []],
-        containers=[_container_status(c, images.get(c.name, "")) for c in raw.status.container_statuses or []],
+        containers=[_container_status(c, specs.get(c.name)) for c in raw.status.container_statuses or []],
     )
 
 

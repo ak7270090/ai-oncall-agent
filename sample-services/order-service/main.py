@@ -39,7 +39,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title=settings.service_name, version=settings.app_version, lifespan=lifespan)
-Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(app).expose(app, include_in_schema=False)
+# The library's default labelled-latency buckets stop at 1s, which caps p99 at 1000 ms.
+LATENCY_BUCKETS_SECONDS = (0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 10)
+Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(
+    app, latency_lowr_buckets=LATENCY_BUCKETS_SECONDS
+).expose(app, include_in_schema=False)
 
 
 def get_http_client(request: Request) -> httpx2.AsyncClient:

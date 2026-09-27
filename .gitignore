@@ -6,5 +6,6 @@ __pycache__/
 CLAUDE.md
 .claude/
 CONTRIBUTING.md
-kubernetes/secrets/*.env
+kubernetes/base/secrets/*.env
 mcp-server/.kube/
+evals/results/

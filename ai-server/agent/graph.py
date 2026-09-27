@@ -77,6 +77,7 @@ def build_investigation_graph(
 ) -> CompiledStateGraph:
     limits = gather.GatheringLimits(
         error_rate_threshold=settings.error_rate_threshold,
+        latency_threshold_ms=settings.latency_threshold_ms,
         max_pods=settings.max_pods_to_inspect,
         max_services=settings.max_services_to_inspect,
         log_lines=settings.log_lines,

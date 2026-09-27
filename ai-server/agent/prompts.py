@@ -26,4 +26,14 @@ REPORT_PROMPT = """\
 Write the final incident report from the investigation below. Every evidence item
 must cite the tool it came from and quote concrete values or log lines. Do not claim
 anything the evidence does not show. Recommended actions are for a human to take.
+
+Classify the ROOT cause (not the symptom) with cause_category:
+- dependency_unavailable: something a service calls is down, has no pods or refuses connections
+- bad_deployment: a recent rollout (new image/version/config) introduced the failure while pods run
+- crash_loop: containers keep crashing/restarting (startup failure, missing config, OOM)
+- resource_exhaustion: CPU or memory at/near the container limit (throttling, OOM kills)
+- slow_dependency: a dependency answers correctly but too slowly
+- no_incident: the evidence shows everything healthy
+- other: none of the above
+root_cause_service is where the fix belongs (e.g. the database, not the services failing because of it).
 """

@@ -1,0 +1,23 @@
+# payment-service v2 ships a regression: pods are healthy but every payment fails (500).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+patches:
+  - target: {kind: Deployment, name: payment-service}
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: payment-service
+      spec:
+        template:
+          metadata:
+            labels:
+              version: v2
+          spec:
+            containers:
+              - name: payment-service
+                image: payment-service:v2
+                env:
+                  - name: FAULT_MODE
+                    value: error

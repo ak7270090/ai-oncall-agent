@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Investigation graph
     default_namespace: str = "shop"
     error_rate_threshold: float = 0.05
+    latency_threshold_ms: float = 1000
     max_pods_to_inspect: int = 3
     max_services_to_inspect: int = 3
     log_lines: int = 50

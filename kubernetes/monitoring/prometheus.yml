@@ -7,6 +7,21 @@ scrape_configs:
     static_configs:
       - targets: [localhost:9090]
 
+  # Kubelet cAdvisor: per-container CPU throttling, which average CPU usage hides.
+  - job_name: kubelet-cadvisor
+    scheme: https
+    metrics_path: /metrics/cadvisor
+    authorization:
+      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    tls_config:
+      insecure_skip_verify: true  # kind's kubelet serves a self-signed certificate
+    kubernetes_sd_configs:
+      - role: node
+    metric_relabel_configs:
+      - source_labels: [__name__, namespace]
+        regex: container_cpu_cfs_(throttled_)?periods_total;shop
+        action: keep
+
   # Pods in `shop` that opt in with prometheus.io/* annotations.
   - job_name: shop-pods
     kubernetes_sd_configs:

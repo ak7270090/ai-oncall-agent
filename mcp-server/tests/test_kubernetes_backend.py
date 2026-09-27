@@ -19,7 +19,10 @@ def crashing_pod() -> k8s.V1Pod:
     return k8s.V1Pod(
         metadata=k8s.V1ObjectMeta(name="payment-abc", namespace=NAMESPACE,
                                   labels={"app": "payment-service", "version": "v2"}, creation_timestamp=CREATED),
-        spec=k8s.V1PodSpec(containers=[k8s.V1Container(name="payment-service", image="payment-service:v2")]),
+        spec=k8s.V1PodSpec(containers=[k8s.V1Container(
+            name="payment-service", image="payment-service:v2",
+            resources=k8s.V1ResourceRequirements(requests={"cpu": "50m"}, limits={"cpu": "250m", "memory": "128Mi"}),
+        )]),
         status=k8s.V1PodStatus(
             phase="Running",
             conditions=[k8s.V1PodCondition(type="Ready", status="False", reason="ContainersNotReady")],
@@ -75,6 +78,7 @@ def test_pod_mapping_extracts_crash_details():
     assert (pod.app, pod.version, pod.phase) == ("payment-service", "v2", "Running")
     assert (container.state, container.reason, container.restart_count) == ("waiting", "CrashLoopBackOff", 7)
     assert (container.last_termination_reason, container.last_exit_code) == ("Error", 1)
+    assert (container.cpu_request, container.cpu_limit, container.memory_limit) == ("50m", "250m", "128Mi")
 
 
 def test_app_filter_becomes_label_selector():

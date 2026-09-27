@@ -24,6 +24,10 @@ class ContainerStatus(BaseModel):
     message: str | None = None
     last_termination_reason: str | None = None
     last_exit_code: int | None = None
+    cpu_request: str | None = None
+    cpu_limit: str | None = None
+    memory_request: str | None = None
+    memory_limit: str | None = None
 
 
 class PodDetail(BaseModel):

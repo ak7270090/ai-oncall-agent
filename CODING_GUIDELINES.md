@@ -146,7 +146,7 @@ message.
 
 ## 14. Kubernetes
 
-- All manifests go through kustomize (`kubernetes/kustomization.yaml`). Add new
+- All manifests go through kustomize (`kubernetes/base/kustomization.yaml`; incidents are overlays in `kubernetes/scenarios/`). Add new
   files to its `resources`.
 - Image tags live in the manifests and in the Makefile's `TAG` variable. Change
   both together.
@@ -169,7 +169,7 @@ message.
   Never rely on only one of them.
 - The MCP server authenticates as its own ServiceAccount with short-lived
   tokens (`make mcp-kubeconfig`), never with an admin kubeconfig.
-- A new tool needs its API permission added to `kubernetes/rbac/` in the same
+- A new tool needs its API permission added to `kubernetes/base/rbac/` in the same
   change, with the narrowest verbs and resources that work.
 - Tools return typed pydantic models (they become the MCP output schema)
   containing only the fields an on-call engineer needs. Never return raw API
@@ -203,11 +203,32 @@ message.
 - The graph depends on MCP tool names and result fields. Change them in
   `mcp-server` only together with `agent/evidence.py` and `tests/fakes.py`.
 
-## 17. Observability of the sample services
+## 17. Scenarios and evals
+
+- Every incident scenario is a kustomize overlay in `kubernetes/scenarios/<name>`
+  on top of `kubernetes/base`. Never hand-edit a running cluster to set up a
+  scenario.
+- Fault-injection code in the sample services is switched on only by an explicit
+  setting (`FAULT_MODE`), defaults to off, and is clearly labelled as such.
+- A scenario isn't done until it's in `evals/scenarios.py`, with a vague
+  operator-style question (never naming the cause), a symptom condition and the
+  expected `cause_category` / `root_cause_service`.
+- Change the investigation graph or prompts only together with an eval run, and
+  keep a change only if the pass rate doesn't drop. Note the before and after
+  in the commit message.
+
+## 18. Observability of the sample services
 
 - Every service exposes `/metrics` (prometheus-fastapi-instrumentator, with
   `/health` and `/metrics` excluded) and opts in to scraping with the
   `prometheus.io/scrape|port|path` pod annotations.
+- Latency histograms need buckets well past the slowest expected response
+  (`LATENCY_BUCKETS_SECONDS`). A percentile can't exceed the top finite bucket.
+- Detect CPU starvation with throttling (`cpu_throttled_ratio`, from cAdvisor),
+  not average usage. Bursty load hides the limit in averages.
+- A service must recover by itself when a dependency comes back, including
+  when the dependency comes back empty. Never cache "already initialised" state
+  about a remote system.
 - When a call to a dependency fails, log an error that names the dependency and
   URL (`upstream unavailable: POST http://payment-service/payments`). A bare
   `502` in an access log can't be traced to its cause.
