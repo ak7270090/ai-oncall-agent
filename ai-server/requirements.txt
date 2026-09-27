@@ -1,0 +1,17 @@
+fastapi==0.141.1
+uvicorn==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+mcp==2.2.0
+httpx2==2.13.1
+langchain==1.4.2
+langchain-core==1.6.5
+langgraph==1.2.12
+# LLM provider integrations: pick one with LLM_MODEL="<provider>:<model>".
+langchain-openai==1.6.6
+langchain-anthropic==1.7.4
+
+# dev
+anyio==4.15.1
+httpx==0.28.1
+pytest==9.1.1
