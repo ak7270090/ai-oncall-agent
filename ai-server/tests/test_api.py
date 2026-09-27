@@ -2,7 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 
+from agent import create_chat_model
 from api.dependencies import get_chat_model, get_mcp_connector
+from config import Settings, get_settings
 from main import LLM_FAILURE_MESSAGE, app
 from mcp_client import connect_to_mcp
 from tests.fakes import build_fake_mcp_server, fake_connector, scripted_model, tool_call_message
@@ -20,6 +22,9 @@ class FailingChatModel(GenericFakeChatModel):
 
 @pytest.fixture
 def client():
+    # Isolate from the developer's ai-server/.env and from any real LLM provider.
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
+    app.dependency_overrides[get_chat_model] = lambda: scripted_model("unused")
     app.dependency_overrides[get_mcp_connector] = lambda: fake_connector(build_fake_mcp_server())
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -66,6 +71,15 @@ def test_empty_question_rejected(client):
 
 def test_llm_failure_returns_502(client):
     use_chat_model(FailingChatModel(messages=iter([])))
+    response = client.post("/investigate", json={"question": "hi"})
+    assert response.status_code == 502
+    assert response.json()["detail"] == LLM_FAILURE_MESSAGE
+
+
+def test_missing_llm_credentials_returns_502(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    settings_without_key = Settings(_env_file=None, llm_model="openai:gpt-5.4-mini")
+    app.dependency_overrides[get_chat_model] = lambda: create_chat_model(settings_without_key)
     response = client.post("/investigate", json={"question": "hi"})
     assert response.status_code == 502
     assert response.json()["detail"] == LLM_FAILURE_MESSAGE

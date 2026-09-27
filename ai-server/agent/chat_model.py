@@ -12,9 +12,12 @@ def create_chat_model(settings: Settings) -> BaseChatModel:
     """Build the chat model from config. `llm_model` is "<provider>:<model>", e.g.
     "openai:gpt-5.4-mini" or "anthropic:claude-opus-5"; no provider-specific code needed."""
     credentials = {"api_key": settings.llm_api_key.get_secret_value()} if settings.llm_api_key else {}
-    return init_chat_model(
-        settings.llm_model,
-        timeout=settings.llm_timeout_seconds,
-        max_retries=settings.llm_max_retries,
-        **credentials,
-    )
+    try:
+        return init_chat_model(
+            settings.llm_model,
+            timeout=settings.llm_timeout_seconds,
+            max_retries=settings.llm_max_retries,
+            **credentials,
+        )
+    except Exception as error:
+        raise LLMError(f"Could not create chat model '{settings.llm_model}' (check LLM_MODEL / LLM_API_KEY): {error}") from error

@@ -5,16 +5,35 @@ ROLLOUT_TIMEOUT ?= 180s
 SMOKE_IMAGE     ?= curlimages/curl:8.10.1
 SERVICES        := user-service payment-service order-service
 SECRET_ENV      := kubernetes/secrets/payment-service.env
+PYTHON_APPS     := mcp-server ai-server sample-services
+PYTHON          ?= $(if $(filter Windows_NT,$(OS)),python,python3)
 VENV_BIN        := $(if $(filter Windows_NT,$(OS)),Scripts,bin)
 
-.PHONY: help up down logs test cluster-up cluster-down smoke-test
+.PHONY: help setup run-mcp-server run-ai-server up down logs test cluster-up cluster-down smoke-test
 
 help:
+	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
+	@echo "run-mcp-server      MCP server locally on http://127.0.0.1:9000/mcp"
+	@echo "run-ai-server       AI server locally on http://127.0.0.1:8000"
 	@echo "up / down / logs    AI server + MCP server with docker compose"
 	@echo "test                run every test suite"
 	@echo "cluster-up          kind cluster with the sample services (namespace $(NAMESPACE))"
 	@echo "smoke-test          place an order through order-service inside the cluster"
 	@echo "cluster-down        delete the kind cluster"
+
+setup:
+	for app in $(PYTHON_APPS); do \
+		$(PYTHON) -m venv $$app/.venv && \
+		$$app/.venv/$(VENV_BIN)/python -m pip install -q --upgrade pip && \
+		$$app/.venv/$(VENV_BIN)/python -m pip install -q -r $$app/requirements-dev.txt || exit 1; \
+	done
+	test -f ai-server/.env || cp ai-server/.env.example ai-server/.env
+
+run-mcp-server:
+	cd mcp-server && .venv/$(VENV_BIN)/python server.py
+
+run-ai-server:
+	cd ai-server && .venv/$(VENV_BIN)/python main.py
 
 up:
 	docker compose up -d --build --wait

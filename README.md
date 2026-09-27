@@ -43,18 +43,15 @@ ai-oncall-agent/
 Each service folder has its own Dockerfile.
 ```
 
-## Setup (Windows / PowerShell)
+## Setup
 
-```powershell
-cd mcp-server
-python -m venv .venv
-.\.venv\Scripts\pip install -r requirements-dev.txt
+Needs Python 3.11+ and `make` (see [Commands](#commands) for Windows).
 
-cd ..\ai-server
-python -m venv .venv
-.\.venv\Scripts\pip install -r requirements-dev.txt
-copy .env.example .env      # set LLM_MODEL and LLM_API_KEY
+```bash
+make setup    # virtualenv + dependencies for each app, creates ai-server/.env
 ```
+
+Then set `LLM_MODEL` and `LLM_API_KEY` in `ai-server/.env`.
 
 ### Choosing the LLM
 
@@ -71,11 +68,17 @@ Everything runs through the `Makefile`; `make help` lists the targets:
 
 | Command | What it does |
 | --- | --- |
+| `make setup` | Virtualenv + dependencies for each app, creates `ai-server/.env` |
+| `make run-mcp-server` / `make run-ai-server` | Run the apps locally (no Docker) |
 | `make up` / `make down` / `make logs` | AI server + MCP server in Docker Compose |
 | `make test` | Every test suite |
 | `make cluster-up` / `make smoke-test` / `make cluster-down` | Kind cluster with the sample services |
 
 Override variables per run, e.g. `make cluster-up CLUSTER=test`.
+
+**Tools:** Python 3.11+, Docker, `make`, and for the cluster also `kind` and
+`kubectl`. macOS: `brew install make kind kubectl`. Linux: use your package
+manager (`make` is usually preinstalled).
 
 **Windows:** run `make` from **Git Bash**, e.g. the VS Code terminal set to
 Git Bash. One-time setup:
@@ -101,12 +104,9 @@ Needs Docker Desktop running and `ai-server/.env` created (see above). Then
 
 ## Run locally (without Docker)
 
-```powershell
-# terminal 1 — MCP server on http://127.0.0.1:9000/mcp
-cd mcp-server; .\.venv\Scripts\python server.py
-
-# terminal 2 — AI server on http://127.0.0.1:8000 (Swagger UI at /docs)
-cd ai-server; .\.venv\Scripts\python main.py
+```bash
+make run-mcp-server   # terminal 1: http://127.0.0.1:9000/mcp
+make run-ai-server    # terminal 2: http://127.0.0.1:8000 (Swagger UI at /docs)
 ```
 
 | Endpoint | What it does |
