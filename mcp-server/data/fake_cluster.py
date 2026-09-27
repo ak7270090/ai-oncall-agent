@@ -1,95 +1,134 @@
-"""Fake cluster state, shaped like the real Kubernetes/Prometheus data of Phases 6-7.
+"""Fake cluster state for MCP_BACKEND=fake (tests, demos without a cluster).
 
 Scenario: payment-service v2.4.0 points at a database host that doesn't exist, so
 its pods crash-loop; order-service fails downstream; user-service is healthy.
 """
 
+from datetime import datetime, timezone
 from typing import Literal
+
+from cluster.models import (
+    ClusterEvent,
+    Condition,
+    ContainerStatus,
+    DeploymentDetail,
+    PodDetail,
+    ReplicaSetRevision,
+)
+
+NAMESPACE = "shop"
 
 Service = Literal["payment-service", "order-service", "user-service"]
 Metric = Literal["error_rate", "latency_p99_ms", "cpu_cores", "memory_mb", "request_rate"]
 
-DEPLOYMENTS: list[dict] = [
-    {
-        "name": "payment-service",
-        "namespace": "default",
-        "image": "registry.local/payment-service:v2.4.0",
-        "replicas_desired": 3,
-        "replicas_ready": 0,
-        "last_rollout": "2026-09-27T09:42:00Z",
-        "previous_image": "registry.local/payment-service:v2.3.1",
-    },
-    {
-        "name": "order-service",
-        "namespace": "default",
-        "image": "registry.local/order-service:v1.8.2",
-        "replicas_desired": 2,
-        "replicas_ready": 2,
-        "last_rollout": "2026-09-20T14:05:00Z",
-        "previous_image": "registry.local/order-service:v1.8.1",
-    },
-    {
-        "name": "user-service",
-        "namespace": "default",
-        "image": "registry.local/user-service:v3.1.0",
-        "replicas_desired": 2,
-        "replicas_ready": 2,
-        "last_rollout": "2026-09-12T11:30:00Z",
-        "previous_image": "registry.local/user-service:v3.0.4",
-    },
+
+def _at(hour: int, minute: int, day: int = 27) -> datetime:
+    return datetime(2026, 9, day, hour, minute, tzinfo=timezone.utc)
+
+
+def _crashing_container(restarts: int) -> ContainerStatus:
+    return ContainerStatus(
+        name="payment-service", image="payment-service:v2.4.0", ready=False, restart_count=restarts,
+        state="waiting", reason="CrashLoopBackOff", message="back-off 5m0s restarting failed container",
+        last_termination_reason="Error", last_exit_code=1,
+    )
+
+
+def _healthy_container(service: str, image: str, restarts: int = 0) -> ContainerStatus:
+    return ContainerStatus(name=service, image=image, ready=True, restart_count=restarts, state="running")
+
+
+_NOT_READY = [Condition(type="Ready", status="False", reason="ContainersNotReady")]
+_READY = [Condition(type="Ready", status="True")]
+
+PODS: list[PodDetail] = [
+    *(
+        PodDetail(name=name, namespace=NAMESPACE, app="payment-service", version="v2", phase="Running",
+                  created_at=_at(9, 42), conditions=_NOT_READY, containers=[_crashing_container(restarts)])
+        for name, restarts in (("payment-service-7d9f8c6b5-2xkqp", 14), ("payment-service-7d9f8c6b5-9fzmw", 13))
+    ),
+    *(
+        PodDetail(name=name, namespace=NAMESPACE, app="order-service", version="v1", phase="Running",
+                  created_at=_at(14, 5, day=20), conditions=_READY,
+                  containers=[_healthy_container("order-service", "order-service:v1.8.2")])
+        for name in ("order-service-5b7c9d4f8-hl2vn", "order-service-5b7c9d4f8-x8mjc")
+    ),
+    *(
+        PodDetail(name=name, namespace=NAMESPACE, app="user-service", version="v1", phase="Running",
+                  created_at=_at(11, 30, day=12), conditions=_READY,
+                  containers=[_healthy_container("user-service", "user-service:v3.1.0", restarts)])
+        for name, restarts in (("user-service-6c4d8f9a7-kp3ws", 0), ("user-service-6c4d8f9a7-r7tbn", 1))
+    ),
 ]
 
-PODS: dict[str, list[dict]] = {
-    "payment-service": [
-        {"name": "payment-service-7d9f8c6b5-2xkqp", "phase": "Running", "ready": False,
-         "status": "CrashLoopBackOff", "restarts": 14, "age": "18m"},
-        {"name": "payment-service-7d9f8c6b5-9fzmw", "phase": "Running", "ready": False,
-         "status": "CrashLoopBackOff", "restarts": 13, "age": "18m"},
-        {"name": "payment-service-7d9f8c6b5-tq4rd", "phase": "Running", "ready": False,
-         "status": "CrashLoopBackOff", "restarts": 13, "age": "18m"},
-    ],
-    "order-service": [
-        {"name": "order-service-5b7c9d4f8-hl2vn", "phase": "Running", "ready": True,
-         "status": "Running", "restarts": 0, "age": "7d"},
-        {"name": "order-service-5b7c9d4f8-x8mjc", "phase": "Running", "ready": True,
-         "status": "Running", "restarts": 0, "age": "7d"},
-    ],
-    "user-service": [
-        {"name": "user-service-6c4d8f9a7-kp3ws", "phase": "Running", "ready": True,
-         "status": "Running", "restarts": 0, "age": "15d"},
-        {"name": "user-service-6c4d8f9a7-r7tbn", "phase": "Running", "ready": True,
-         "status": "Running", "restarts": 1, "age": "15d"},
-    ],
-}
+_PAYMENT_CRASH_LOG = [
+    "2026-09-27T09:59:48Z INFO  Starting payment-service v2.4.0",
+    "2026-09-27T09:59:49Z INFO  Connecting to database payments-db-v2.shop.svc:5432",
+    "2026-09-27T09:59:54Z WARN  Database connection attempt 1/3 failed: could not resolve host payments-db-v2.shop.svc",
+    "2026-09-27T10:00:04Z WARN  Database connection attempt 3/3 failed: could not resolve host payments-db-v2.shop.svc",
+    "2026-09-27T10:00:04Z ERROR Fatal: unable to connect to database after 3 attempts",
+    "2026-09-27T10:00:04Z INFO  Shutting down (exit code 1)",
+]
+_ORDER_LOG = [
+    "2026-09-27T09:58:10Z INFO  POST /orders 201 84ms",
+    "2026-09-27T09:58:31Z ERROR POST /orders 502 upstream payment-service unavailable (connection refused)",
+    "2026-09-27T09:59:40Z WARN  circuit breaker OPEN for payment-service",
+    "2026-09-27T10:00:05Z ERROR POST /orders 503 circuit breaker open for payment-service",
+]
+_USER_LOG = [
+    "2026-09-27T09:58:02Z INFO  GET /users/1043 200 9ms",
+    "2026-09-27T09:59:55Z INFO  GET /users/881 200 8ms",
+]
 
 LOGS: dict[str, list[str]] = {
-    "payment-service": [
-        "2026-09-27T09:59:48Z INFO  Starting payment-service v2.4.0",
-        "2026-09-27T09:59:48Z INFO  Loading config from env",
-        "2026-09-27T09:59:49Z INFO  Connecting to database payments-db-v2.default.svc:5432",
-        "2026-09-27T09:59:54Z WARN  Database connection attempt 1/3 failed: could not resolve host payments-db-v2.default.svc",
-        "2026-09-27T09:59:59Z WARN  Database connection attempt 2/3 failed: could not resolve host payments-db-v2.default.svc",
-        "2026-09-27T10:00:04Z WARN  Database connection attempt 3/3 failed: could not resolve host payments-db-v2.default.svc",
-        "2026-09-27T10:00:04Z ERROR Fatal: unable to connect to database after 3 attempts",
-        "2026-09-27T10:00:04Z ERROR Traceback (most recent call last): ... sqlalchemy.exc.OperationalError: could not translate host name \"payments-db-v2.default.svc\"",
-        "2026-09-27T10:00:04Z INFO  Shutting down (exit code 1)",
-    ],
-    "order-service": [
-        "2026-09-27T09:58:10Z INFO  POST /orders 201 84ms",
-        "2026-09-27T09:58:31Z ERROR POST /orders 502 upstream payment-service unavailable (connection refused)",
-        "2026-09-27T09:58:47Z ERROR POST /orders 502 upstream payment-service unavailable (connection refused)",
-        "2026-09-27T09:59:02Z INFO  GET /orders/8812 200 12ms",
-        "2026-09-27T09:59:15Z ERROR POST /orders 502 upstream payment-service unavailable (connection refused)",
-        "2026-09-27T09:59:40Z WARN  circuit breaker OPEN for payment-service",
-        "2026-09-27T10:00:05Z ERROR POST /orders 503 circuit breaker open for payment-service",
-    ],
-    "user-service": [
-        "2026-09-27T09:58:02Z INFO  GET /users/1043 200 9ms",
-        "2026-09-27T09:58:40Z INFO  GET /users/2210 200 11ms",
-        "2026-09-27T09:59:12Z INFO  PATCH /users/1043 200 23ms",
-        "2026-09-27T09:59:55Z INFO  GET /users/881 200 8ms",
-    ],
+    pod.name: {"payment-service": _PAYMENT_CRASH_LOG[:2], "order-service": _ORDER_LOG, "user-service": _USER_LOG}[pod.app]
+    for pod in PODS
 }
+PREVIOUS_LOGS: dict[str, list[str]] = {
+    pod.name: _PAYMENT_CRASH_LOG for pod in PODS if pod.app == "payment-service"
+}
+
+DEPLOYMENTS: list[DeploymentDetail] = [
+    DeploymentDetail(
+        name="payment-service", namespace=NAMESPACE, image="payment-service:v2.4.0", version="v2",
+        desired_replicas=2, ready_replicas=0, updated_replicas=2, available_replicas=0,
+        conditions=[
+            Condition(type="Available", status="False", reason="MinimumReplicasUnavailable"),
+            Condition(type="Progressing", status="False", reason="ProgressDeadlineExceeded"),
+        ],
+        revisions=[
+            ReplicaSetRevision(revision=2, name="payment-service-7d9f8c6b5", image="payment-service:v2.4.0",
+                               version="v2", desired_replicas=2, ready_replicas=0, created_at=_at(9, 42)),
+            ReplicaSetRevision(revision=1, name="payment-service-54ffb7b494", image="payment-service:v2.3.1",
+                               version="v1", desired_replicas=0, ready_replicas=0, created_at=_at(10, 0, day=15)),
+        ],
+    ),
+    DeploymentDetail(
+        name="order-service", namespace=NAMESPACE, image="order-service:v1.8.2", version="v1",
+        desired_replicas=2, ready_replicas=2, updated_replicas=2, available_replicas=2,
+        conditions=[Condition(type="Available", status="True", reason="MinimumReplicasAvailable")],
+        revisions=[ReplicaSetRevision(revision=1, name="order-service-5b7c9d4f8", image="order-service:v1.8.2",
+                                      version="v1", desired_replicas=2, ready_replicas=2, created_at=_at(14, 5, day=20))],
+    ),
+    DeploymentDetail(
+        name="user-service", namespace=NAMESPACE, image="user-service:v3.1.0", version="v1",
+        desired_replicas=2, ready_replicas=2, updated_replicas=2, available_replicas=2,
+        conditions=[Condition(type="Available", status="True", reason="MinimumReplicasAvailable")],
+        revisions=[ReplicaSetRevision(revision=1, name="user-service-6c4d8f9a7", image="user-service:v3.1.0",
+                                      version="v1", desired_replicas=2, ready_replicas=2, created_at=_at(11, 30, day=12))],
+    ),
+]
+
+EVENTS: list[ClusterEvent] = [
+    ClusterEvent(type="Warning", reason="BackOff", object="Pod/payment-service-7d9f8c6b5-2xkqp",
+                 message="Back-off restarting failed container payment-service", count=58, last_seen=_at(10, 0)),
+    ClusterEvent(type="Warning", reason="BackOff", object="Pod/payment-service-7d9f8c6b5-9fzmw",
+                 message="Back-off restarting failed container payment-service", count=55, last_seen=_at(9, 59)),
+    ClusterEvent(type="Warning", reason="Unhealthy", object="Pod/payment-service-7d9f8c6b5-2xkqp",
+                 message="Readiness probe failed: connection refused", count=12, last_seen=_at(9, 58)),
+    ClusterEvent(type="Normal", reason="ScalingReplicaSet", object="Deployment/payment-service",
+                 message="Scaled up replica set payment-service-7d9f8c6b5 to 2", count=1, last_seen=_at(9, 42)),
+]
 
 # Last 5 samples (1-minute resolution, oldest first) per service per metric.
 METRICS: dict[str, dict[str, dict]] = {

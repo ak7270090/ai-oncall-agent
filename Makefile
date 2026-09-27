@@ -8,17 +8,23 @@ SECRET_ENV      := kubernetes/secrets/payment-service.env
 PYTHON_APPS     := mcp-server ai-server sample-services
 PYTHON          ?= $(if $(filter Windows_NT,$(OS)),python,python3)
 VENV_BIN        := $(if $(filter Windows_NT,$(OS)),Scripts,bin)
+MCP_KUBE_DIR    := mcp-server/.kube
+MCP_TOKEN_TTL   ?= 24h
+KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
+COMPOSE_KIND    := docker compose -f docker-compose.yml -f docker-compose.kind.yml
 
-.PHONY: help setup run-mcp-server run-ai-server up down logs test cluster-up cluster-down smoke-test
+.PHONY: help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
 	@echo "run-mcp-server      MCP server locally on http://127.0.0.1:9000/mcp"
 	@echo "run-ai-server       AI server locally on http://127.0.0.1:8000"
-	@echo "up / down / logs    AI server + MCP server with docker compose"
+	@echo "up / down / logs    AI server + MCP server with docker compose (fake cluster data)"
+	@echo "up-kind             same, but the MCP server reads the kind cluster"
 	@echo "test                run every test suite"
 	@echo "cluster-up          kind cluster with the sample services (namespace $(NAMESPACE))"
 	@echo "smoke-test          place an order through order-service inside the cluster"
+	@echo "mcp-kubeconfig      fresh read-only credentials for the MCP server (token TTL $(MCP_TOKEN_TTL))"
 	@echo "cluster-down        delete the kind cluster"
 
 setup:
@@ -37,6 +43,9 @@ run-ai-server:
 
 up:
 	docker compose up -d --build --wait
+
+up-kind: mcp-kubeconfig
+	$(COMPOSE_KIND) up -d --build --wait
 
 down:
 	docker compose down
@@ -59,6 +68,24 @@ cluster-up: $(SECRET_ENV)
 	kubectl apply -k kubernetes
 	kubectl wait deployment --all -n $(NAMESPACE) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
 	kubectl get deployments,replicasets,pods,services -n $(NAMESPACE)
+	$(MAKE) mcp-kubeconfig
+
+# Kubeconfigs for the read-only `mcp-server` ServiceAccount: `config` for running on
+# the host, `config.internal` for containers on kind's Docker network.
+mcp-kubeconfig:
+	mkdir -p $(MCP_KUBE_DIR)
+	ca=$$(kubectl config view --raw --minify --context kind-$(CLUSTER) -o jsonpath='{.clusters[0].cluster.certificate-authority-data}') && \
+	server=$$(kubectl config view --minify --context kind-$(CLUSTER) -o jsonpath='{.clusters[0].cluster.server}') && \
+	token=$$(kubectl create token mcp-server -n $(NAMESPACE) --duration=$(MCP_TOKEN_TTL) --context kind-$(CLUSTER)) && \
+	for target in "config $$server" "config.internal $(KIND_API_INTERNAL)"; do \
+		set -- $$target; \
+		printf '%s\n' "apiVersion: v1" "kind: Config" "current-context: mcp-server" \
+			"clusters: [{name: kind, cluster: {server: '$$2', certificate-authority-data: '$$ca'}}]" \
+			"users: [{name: mcp-server, user: {token: '$$token'}}]" \
+			"contexts: [{name: mcp-server, context: {cluster: kind, user: mcp-server, namespace: $(NAMESPACE)}}]" \
+			> $(MCP_KUBE_DIR)/$$1 || exit 1; \
+	done
+	@echo "wrote $(MCP_KUBE_DIR)/config and config.internal (expire in $(MCP_TOKEN_TTL))"
 
 # Generated once with a random dev key; gitignored.
 $(SECRET_ENV):

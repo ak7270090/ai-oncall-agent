@@ -1,0 +1,15 @@
+# Overlay for `make up-kind`: the MCP server reads the kind cluster instead of fake data.
+# Joins kind's Docker network and uses the read-only ServiceAccount credentials
+# written by `make mcp-kubeconfig` (internal API address).
+services:
+  mcp-server:
+    environment:
+      MCP_BACKEND: kubernetes
+      MCP_KUBECONFIG_PATH: /app/.kube/config
+    volumes:
+      - ./mcp-server/.kube/config.internal:/app/.kube/config:ro
+    networks: [default, kind]
+
+networks:
+  kind:
+    external: true

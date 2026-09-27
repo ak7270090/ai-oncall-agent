@@ -1,16 +1,16 @@
 # AI On-Call Agent (MCP)
 
 An AI on-call assistant that investigates incidents through the Model Context
-Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–5 are done.**
+Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–6 are done.**
 Code rules are in [CODING_GUIDELINES.md](./CODING_GUIDELINES.md).
 
 ```text
- User ──HTTP──► AI server :8000 ──MCP / Streamable HTTP──► MCP server :9000
-                FastAPI                                     list_deployments
+ User ──HTTP──► AI server :8000 ──MCP / Streamable HTTP──► MCP server :9000 ──read-only──► kind cluster
+                FastAPI                                     list_pods                      (namespace shop)
                 LangGraph + LangChain                       get_pod_status
-                any LLM (config)                            get_logs
-                MCP client                                  get_metrics
-                                                            (fake data)
+                any LLM (config)                            get_pod_logs
+                MCP client                                  list/get_deployment
+                                                            list_events
 ```
 
 The two apps are fully separate. They share no code, and each has its own
@@ -24,9 +24,10 @@ ai-oncall-agent/
 ├── mcp-server/
 │   ├── server.py              create_server(): registers tools, /health route
 │   ├── config/settings.py     MCP_* settings
-│   ├── tools/                 kubernetes.py, observability.py
+│   ├── cluster/               backends: kubernetes_backend.py (real), fake_backend.py; models.py
+│   ├── tools/                 kubernetes.py (tool layer), observability.py (fake metrics)
 │   ├── data/fake_cluster.py   the fake incident
-│   └── tests/
+│   └── tests/                 unit + integration/ (live kind cluster, RBAC checks)
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
 │   ├── api/                   routes, schemas, dependencies
@@ -35,13 +36,14 @@ ai-oncall-agent/
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
-├── kubernetes/            kind cluster config + kustomize manifests (namespace shop)
-├── docker-compose.yml     AI server + MCP server
+├── kubernetes/            kind cluster config + kustomize manifests (namespace shop, rbac/)
+├── docker-compose.yml     AI server + MCP server (fake data)
+├── docker-compose.kind.yml  overlay: MCP server reads the kind cluster
 ├── Makefile               every command: make help
 └── CODING_GUIDELINES.md
+```
 
 Each service folder has its own Dockerfile.
-```
 
 ## Setup
 
@@ -70,9 +72,11 @@ Everything runs through the `Makefile`; `make help` lists the targets:
 | --- | --- |
 | `make setup` | Virtualenv + dependencies for each app, creates `ai-server/.env` |
 | `make run-mcp-server` / `make run-ai-server` | Run the apps locally (no Docker) |
-| `make up` / `make down` / `make logs` | AI server + MCP server in Docker Compose |
-| `make test` | Every test suite |
+| `make up` / `make down` / `make logs` | AI server + MCP server in Docker Compose (fake cluster data) |
+| `make up-kind` | Same, but the MCP server reads the kind cluster |
+| `make test` | Every test suite (cluster tests run only if the kind cluster is up) |
 | `make cluster-up` / `make smoke-test` / `make cluster-down` | Kind cluster with the sample services |
+| `make mcp-kubeconfig` | Fresh short-lived, read-only credentials for the MCP server |
 
 Override variables per run, e.g. `make cluster-up CLUSTER=test`.
 
@@ -163,6 +167,48 @@ make cluster-down   # delete the cluster (frees CPU/RAM)
 Useful commands: `kubectl get deploy,rs,pods,svc -n shop`,
 `kubectl logs -n shop deploy/order-service`,
 `kubectl describe pod -n shop -l app=payment-service`.
+
+## Real Kubernetes tools (Phase 6)
+
+The MCP server reads the kind cluster through the official `kubernetes` Python
+client. Every tool is read-only:
+
+| Tool | What the agent gets |
+| --- | --- |
+| `list_pods(namespace, app?)` | Phase, ready, restarts and a one-word status (`CrashLoopBackOff`, `ImagePullBackOff`, …) |
+| `get_pod_status(pod)` | Per container: state, reason, restart count, last termination reason and exit code |
+| `get_pod_logs(pod, lines, previous)` | Recent log lines. `previous=true` returns the crashed container's logs. |
+| `list_deployments(namespace)` | Image, version label, desired/ready/updated/available replicas |
+| `get_deployment(name)` | Conditions plus rollout history (ReplicaSet revisions, newest first), to spot bad rollouts |
+| `list_events(namespace, warnings_only)` | Recent events: BackOff, failed image pulls, probe failures, … |
+
+Tools return typed results with an MCP output schema. They contain only the
+fields shown above, never environment variables or other parts of a pod spec.
+
+**Two layers of protection:**
+
+| Layer | Enforces |
+| --- | --- |
+| **RBAC** (`kubernetes/rbac/mcp-server.yaml`) | The `mcp-server` ServiceAccount can only `get/list` pods, pods/log, events, deployments and ReplicaSets in `shop`: no Secrets, no other namespaces, no writes. Enforced by the API server even if our code has a bug. |
+| **Tool layer** (`mcp-server/tools/kubernetes.py`) | Namespace allowlist (`MCP_ALLOWED_NAMESPACES`), validated arguments (log lines ≤ 500), trimmed output, readable errors for the model |
+
+The MCP server never uses your admin kubeconfig. `make cluster-up` runs
+`make mcp-kubeconfig`, which creates a **short-lived token** (default 24h, set
+with `MCP_TOKEN_TTL`) for the ServiceAccount and writes it to
+`mcp-server/.kube/` (gitignored). Rerun `make mcp-kubeconfig` when the token
+expires.
+
+**Data source** (`MCP_BACKEND`):
+
+| Value | Used by | Notes |
+| --- | --- | --- |
+| `kubernetes` (default) | `make run-mcp-server`, `make up-kind` | Reads the cluster |
+| `fake` | `make up`, unit tests | The canned incident; also offers `get_metrics`, which stays fake until Prometheus in Phase 7 and is never mixed with a real cluster |
+
+**Try it:** run `make cluster-up`, break something (e.g.
+`kubectl -n shop set image deploy/payment-service payment-service=payment-service:v2`),
+then `make run-mcp-server` and `make run-ai-server`, or `make up-kind`, and ask
+`/investigate` what's wrong.
 
 ## Test
 

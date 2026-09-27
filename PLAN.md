@@ -52,7 +52,7 @@ learn MCP deeply through a real project, not to rush to a finished product.
 | 3     | Separate HTTP communication   | 🔴 Now      | Done |
 | 4     | Docker                        | 🔴 Now      | Done |
 | 5     | Local Kubernetes (kind)       | 🔴 Now      | Done |
-| 6     | Real Kubernetes tools         | 🔴 Now      | Not started |
+| 6     | Real Kubernetes tools         | 🔴 Now      | Done (incl. minimal read-only RBAC) |
 | 7     | Prometheus                    | 🟠 Next     | Not started |
 | 8     | LangGraph investigation       | 🟠 Next     | Not started |
 | 9     | Failure simulation            | 🟠 Next     | Not started |

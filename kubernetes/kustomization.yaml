@@ -19,6 +19,7 @@ resources:
   - services/user-service.yaml
   - services/payment-service.yaml
   - services/order-service.yaml
+  - rbac/mcp-server.yaml
 
 secretGenerator:
   - name: payment-service-secrets

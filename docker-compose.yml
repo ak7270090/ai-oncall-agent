@@ -11,6 +11,7 @@ services:
     build: ./mcp-server
     restart: unless-stopped
     environment:
+      MCP_BACKEND: fake
       MCP_HOST: 0.0.0.0
       MCP_PORT: 9000
       MCP_ALLOWED_HOSTS: '["mcp-server:*", "localhost:*", "127.0.0.1:*"]'

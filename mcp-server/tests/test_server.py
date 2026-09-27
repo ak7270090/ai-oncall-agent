@@ -1,5 +1,3 @@
-import json
-
 import pytest
 from mcp import Client
 from starlette.testclient import TestClient
@@ -7,14 +5,19 @@ from starlette.testclient import TestClient
 from config import Settings
 from server import create_server, transport_security
 
-EXPECTED_TOOLS = {"list_deployments", "get_pod_status", "get_logs", "get_metrics"}
+KUBERNETES_TOOLS = {"list_pods", "get_pod_status", "get_pod_logs", "list_deployments", "get_deployment", "list_events"}
+CRASHING_POD = "payment-service-7d9f8c6b5-2xkqp"
 
 pytestmark = pytest.mark.anyio
 
 
+def fake_settings(**overrides) -> Settings:
+    return Settings(_env_file=None, backend="fake", **overrides)
+
+
 @pytest.fixture
 def server():
-    return create_server(Settings(_env_file=None))
+    return create_server(fake_settings())
 
 
 @pytest.fixture
@@ -23,9 +26,16 @@ async def client(server):
         yield mcp_client
 
 
-def tool_payload(result) -> dict:
+async def call(client, tool: str, arguments: dict | None = None) -> dict:
+    result = await client.call_tool(tool, arguments or {})
     assert not result.is_error, result.content
-    return json.loads(result.content[0].text)
+    return result.structured_content
+
+
+async def call_error(client, tool: str, arguments: dict) -> str:
+    result = await client.call_tool(tool, arguments)
+    assert result.is_error
+    return result.content[0].text
 
 
 def test_health_route(server):
@@ -33,82 +43,88 @@ def test_health_route(server):
         assert http.get("/health").json() == {"status": "ok"}
 
 
+async def test_fake_backend_offers_kubernetes_tools_and_fake_metrics(client):
+    names = {t.name for t in (await client.list_tools()).tools}
+    assert names == KUBERNETES_TOOLS | {"get_metrics"}
+
+
+async def test_kubernetes_backend_hides_fake_metrics():
+    async with Client(create_server(Settings(_env_file=None, backend="kubernetes"))) as mcp_client:
+        names = {t.name for t in (await mcp_client.list_tools()).tools}
+    assert names == KUBERNETES_TOOLS
+
+
+async def test_every_tool_is_described_and_has_output_schema(client):
+    for tool in (await client.list_tools()).tools:
+        assert tool.description, tool.name
+        if tool.name in KUBERNETES_TOOLS:
+            assert tool.output_schema, tool.name
+
+
+async def test_namespace_defaults_to_configured_namespace(client):
+    tools = {t.name: t for t in (await client.list_tools()).tools}
+    assert tools["list_pods"].input_schema["properties"]["namespace"]["default"] == "shop"
+
+
+async def test_list_pods_shows_crashloop(client):
+    pods = (await call(client, "list_pods", {"app": "payment-service"}))["pods"]
+    assert {p["status"] for p in pods} == {"CrashLoopBackOff"}
+    assert not any(p["ready"] for p in pods)
+
+
+async def test_get_pod_status_explains_last_crash(client):
+    pod = await call(client, "get_pod_status", {"pod": CRASHING_POD})
+    container = pod["containers"][0]
+    assert (container["reason"], container["last_exit_code"]) == ("CrashLoopBackOff", 1)
+
+
+async def test_previous_logs_contain_the_crash(client):
+    logs = await call(client, "get_pod_logs", {"pod": CRASHING_POD, "previous": True, "lines": 2})
+    assert len(logs["lines"]) == 2
+    assert "exit code 1" in logs["lines"][-1]
+
+
+async def test_get_deployment_shows_rollout_history(client):
+    deployment = await call(client, "get_deployment", {"name": "payment-service"})
+    assert [r["revision"] for r in deployment["revisions"]] == [2, 1]
+    assert deployment["revisions"][0]["ready_replicas"] == 0
+
+
+async def test_list_deployments(client):
+    names = {d["name"] for d in (await call(client, "list_deployments"))["deployments"]}
+    assert names == {"payment-service", "order-service", "user-service"}
+
+
+async def test_list_events_warnings_only(client):
+    events = (await call(client, "list_events", {"limit": 5}))["events"]
+    assert events and all(e["type"] == "Warning" for e in events)
+
+
+async def test_namespace_outside_allowlist_rejected(client):
+    message = await call_error(client, "list_pods", {"namespace": "kube-system"})
+    assert "not allowed" in message
+
+
+async def test_unknown_pod_is_a_tool_error(client):
+    assert "Not found" in await call_error(client, "get_pod_status", {"pod": "nope"})
+
+
+async def test_log_line_limit_enforced_by_schema(client):
+    await call_error(client, "get_pod_logs", {"pod": CRASHING_POD, "lines": 0})
+
+
 def test_transport_security_uses_sdk_default_without_allowed_hosts():
-    assert transport_security(Settings(_env_file=None)) is None
+    assert transport_security(fake_settings()) is None
 
 
 def test_transport_security_enforces_allowed_hosts():
-    security = transport_security(Settings(_env_file=None, allowed_hosts=["mcp-server:*"]))
+    security = transport_security(fake_settings(allowed_hosts=["mcp-server:*"]))
     assert security.enable_dns_rebinding_protection
     assert security.allowed_hosts == ["mcp-server:*"]
 
 
 def test_foreign_host_header_rejected(server):
-    app = server.streamable_http_app(
-        transport_security=transport_security(Settings(_env_file=None, allowed_hosts=["mcp-server:*"]))
-    )
+    app = server.streamable_http_app(transport_security=transport_security(fake_settings(allowed_hosts=["mcp-server:*"])))
     with TestClient(app) as http:
         response = http.post("/mcp", headers={"Host": "evil.example:9000"}, json={})
     assert response.status_code == 421
-
-
-async def test_tools_are_discoverable(client):
-    result = await client.list_tools()
-    assert {t.name for t in result.tools} == EXPECTED_TOOLS
-    for tool in result.tools:
-        assert tool.description, f"{tool.name} needs a description the LLM can read"
-
-
-async def test_service_arg_is_an_enum_in_the_schema(client):
-    tools = {t.name: t for t in (await client.list_tools()).tools}
-    service_schema = tools["get_pod_status"].input_schema["properties"]["service"]
-    assert set(service_schema["enum"]) == {"payment-service", "order-service", "user-service"}
-    assert tools["get_pod_status"].input_schema["required"] == ["service"]
-
-
-async def test_list_deployments(client):
-    data = tool_payload(await client.call_tool("list_deployments", {}))
-    assert {d["name"] for d in data["deployments"]} == {
-        "payment-service", "order-service", "user-service"
-    }
-
-
-async def test_list_deployments_unknown_namespace_is_empty(client):
-    data = tool_payload(await client.call_tool("list_deployments", {"namespace": "nope"}))
-    assert data["deployments"] == []
-
-
-async def test_get_pod_status_shows_crashloop(client):
-    data = tool_payload(await client.call_tool("get_pod_status", {"service": "payment-service"}))
-    assert all(p["status"] == "CrashLoopBackOff" for p in data["pods"])
-
-
-async def test_get_logs_respects_lines(client):
-    data = tool_payload(await client.call_tool("get_logs", {"service": "payment-service", "lines": 3}))
-    assert len(data["lines"]) == 3
-    assert "exit code 1" in data["lines"][-1]
-
-
-async def test_get_metrics(client):
-    data = tool_payload(await client.call_tool(
-        "get_metrics", {"service": "payment-service", "metric": "error_rate"}
-    ))
-    assert data["unit"] == "ratio"
-    assert len(data["samples"]) == 5
-
-
-async def test_unknown_service_is_a_tool_error(client):
-    result = await client.call_tool("get_pod_status", {"service": "billing-service"})
-    assert result.is_error
-
-
-async def test_out_of_range_lines_is_a_tool_error(client):
-    result = await client.call_tool("get_logs", {"service": "user-service", "lines": 0})
-    assert result.is_error
-    assert "lines" in result.content[0].text
-
-
-async def test_lines_bounds_are_in_the_schema(client):
-    tools = {t.name: t for t in (await client.list_tools()).tools}
-    lines = tools["get_logs"].input_schema["properties"]["lines"]
-    assert (lines["minimum"], lines["maximum"]) == (1, 200)

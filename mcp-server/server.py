@@ -5,13 +5,14 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from cluster import ClusterBackend, create_backend
 from config import Settings, get_settings
-from tools import ALL_TOOLS
+from tools import build_tools
 
 
-def create_server(settings: Settings) -> MCPServer:
+def create_server(settings: Settings, backend: ClusterBackend | None = None) -> MCPServer:
     server = MCPServer(settings.server_name, version=settings.server_version, log_level=settings.log_level)
-    for tool in ALL_TOOLS:
+    for tool in build_tools(backend or create_backend(settings), settings):
         server.add_tool(tool)
 
     @server.custom_route("/health", methods=["GET"])

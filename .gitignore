@@ -7,3 +7,4 @@ CLAUDE.md
 .claude/
 CONTRIBUTING.md
 kubernetes/secrets/*.env
+mcp-server/.kube/

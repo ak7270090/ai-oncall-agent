@@ -24,7 +24,8 @@ VENV_PYTHON = MCP_SERVER_DIR / ".venv" / ("Scripts/python.exe" if sys.platform =
 HOST = "127.0.0.1"
 STARTUP_TIMEOUT_SECONDS = 20
 MCP_TIMEOUT_SECONDS = 10
-EXPECTED_TOOLS = {"list_deployments", "get_pod_status", "get_logs", "get_metrics"}
+EXPECTED_TOOLS = {"list_pods", "get_pod_status", "get_pod_logs", "list_deployments", "get_deployment",
+                  "list_events", "get_metrics"}
 
 if not VENV_PYTHON.exists():
     pytest.skip(f"MCP server virtualenv not found at {VENV_PYTHON}", allow_module_level=True)
@@ -56,7 +57,8 @@ def mcp_server_url():
     process = subprocess.Popen(
         [str(VENV_PYTHON), "server.py"],
         cwd=MCP_SERVER_DIR,
-        env={**os.environ, "MCP_HOST": HOST, "MCP_PORT": str(port), "MCP_TRANSPORT": "streamable-http"},
+        env={**os.environ, "MCP_HOST": HOST, "MCP_PORT": str(port), "MCP_TRANSPORT": "streamable-http",
+             "MCP_BACKEND": "fake"},
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -77,7 +79,7 @@ async def test_discovers_tools_over_http(mcp_server_url):
 
 async def test_calls_tool_over_http(mcp_server_url):
     async with connect_to_mcp(mcp_server_url, MCP_TIMEOUT_SECONDS) as mcp_client:
-        result = await mcp_client.call_tool("get_pod_status", {"service": "payment-service"})
+        result = await mcp_client.call_tool("list_pods", {"app": "payment-service"})
     pods = json.loads(result.content[0].text)["pods"]
     assert all(pod["status"] == "CrashLoopBackOff" for pod in pods)
 

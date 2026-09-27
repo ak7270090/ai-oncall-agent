@@ -160,3 +160,20 @@ message.
   configured through ConfigMaps.
 - After testing, run `make cluster-down` so the cluster stops using CPU and
   memory.
+
+## 15. Access control for tools that touch infrastructure
+
+- Enforce every rule in **two layers**. RBAC on the tool's Kubernetes identity
+  is the hard backstop. The tool layer adds namespace allowlists, argument
+  limits, output trimming and (later) per-user permissions and approval.
+  Never rely on only one of them.
+- The MCP server authenticates as its own ServiceAccount with short-lived
+  tokens (`make mcp-kubeconfig`), never with an admin kubeconfig.
+- A new tool needs its API permission added to `kubernetes/rbac/` in the same
+  change, with the narrowest verbs and resources that work.
+- Tools return typed pydantic models (they become the MCP output schema)
+  containing only the fields an on-call engineer needs. Never return raw API
+  objects, environment variables or anything from a Secret.
+- Keep fake and real backends behind the same `ClusterBackend` interface so
+  every tool is testable without a cluster. Never mix synthetic data with a
+  real backend.

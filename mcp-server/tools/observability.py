@@ -20,4 +20,6 @@ def get_metrics(service: Service, metric: Metric) -> dict:
     }
 
 
-OBSERVABILITY_TOOLS = (get_metrics,)
+# Synthetic until Phase 7 (Prometheus): only offered with the fake backend so the
+# agent never mixes invented metrics with a real cluster.
+FAKE_OBSERVABILITY_TOOLS = (get_metrics,)

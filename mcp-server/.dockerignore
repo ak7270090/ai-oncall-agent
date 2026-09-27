@@ -6,3 +6,4 @@ tests/
 .env
 requirements-dev.txt
 pytest.ini
+.kube/
