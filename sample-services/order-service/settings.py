@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     user_service_url: str = "http://localhost:8081"
     payment_service_url: str = "http://localhost:8082"
     downstream_timeout_seconds: float = 5
+    slow_call_warning_seconds: float = 1
 
 
 @lru_cache

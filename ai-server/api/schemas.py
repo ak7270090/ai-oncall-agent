@@ -1,6 +1,8 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from agent import IncidentReport
+from agent import IncidentReport, IncidentScope
 from config import get_settings
 
 
@@ -10,20 +12,25 @@ class InvestigateRequest(BaseModel):
         max_length=get_settings().max_question_length,
         examples=["Checkout is failing, what's wrong with payments?"],
     )
+    include_evidence_results: bool = Field(
+        default=False, description="Also return raw tool output per check (large; for debugging and evals)")
 
 
 class EvidenceResponse(BaseModel):
-    """One check the investigation ran. Raw tool output is summarized in the report."""
+    """One check the investigation ran; `result` only when include_evidence_results is set."""
 
     step: str
     source: str
     arguments: dict
     error: str | None = None
+    result: Any = None
 
 
 class InvestigateResponse(BaseModel):
     answer: str = Field(description="The report rendered as Markdown")
     report: IncidentReport
+    scope: IncidentScope
+    namespace: str
     evidence: list[EvidenceResponse]
     notes: list[str]
     steps: list[str]

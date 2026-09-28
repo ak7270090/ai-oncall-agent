@@ -173,9 +173,12 @@ class KubernetesBackend:
     def get_pod_logs(self, namespace: str, name: str, tail_lines: int, previous: bool) -> list[str]:
         try:
             with translate_errors(f"read logs of pod '{name}'", namespace):
-                text = self._core.read_namespaced_pod_log(
-                    name, namespace, tail_lines=tail_lines, previous=previous, _request_timeout=self._timeout
+                # Raw response: the client's own decoding can hand back a bytes repr as one line.
+                response = self._core.read_namespaced_pod_log(
+                    name, namespace, tail_lines=tail_lines, previous=previous, timestamps=True,
+                    _preload_content=False, _request_timeout=self._timeout,
                 )
+                text = response.data.decode("utf-8", errors="replace")
         except ClusterError as error:
             if previous and isinstance(error.__cause__, ApiException) and error.__cause__.status == 400:
                 raise ClusterError(

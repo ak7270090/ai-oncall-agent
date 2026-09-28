@@ -64,7 +64,13 @@ def test_investigate_returns_structured_report_and_evidence(client):
     assert body["answer"].startswith("**Incident:**")
     assert body["llm_calls"] == 3
     assert {"step", "source", "arguments"} <= body["evidence"][0].keys()
-    assert "result" not in body["evidence"][0]
+    assert body["evidence"][0]["result"] is None
+    assert body["scope"]["symptom"] and body["namespace"] == "shop"
+
+
+def test_investigate_can_include_raw_evidence(client):
+    body = client.post("/investigate", json={"question": "Checkout is failing", "include_evidence_results": True}).json()
+    assert any(e["result"] for e in body["evidence"])
 
 
 def test_empty_question_rejected(client):

@@ -31,12 +31,12 @@ class Scenario:
 
 def _error_rate(service: str) -> str:
     requests = f'http_requests_total{{namespace="shop",service="{service}"'
-    return f'(sum(rate({requests},status="5xx"}}[1m])) or vector(0)) / sum(rate({requests}}}[1m]))'
+    return f'(sum(rate({requests},status="5xx"}}[30s])) or vector(0)) / sum(rate({requests}}}[30s]))'
 
 
 def _p99_ms(service: str) -> str:
     buckets = f'http_request_duration_seconds_bucket{{namespace="shop",service="{service}"}}'
-    return f"1000 * histogram_quantile(0.99, sum by (le) (rate({buckets}[1m])))"
+    return f"1000 * histogram_quantile(0.99, sum by (le) (rate({buckets}[30s])))"
 
 
 SCENARIOS: list[Scenario] = [

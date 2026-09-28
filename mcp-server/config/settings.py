@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     prometheus_url: str = "http://127.0.0.1:9090"
     prometheus_timeout_seconds: float = 10
-    metrics_rate_window: str = "1m"
+    metrics_rate_window: str = "30s"
     metrics_step_seconds: int = 60
 
 

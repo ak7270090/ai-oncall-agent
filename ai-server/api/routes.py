@@ -56,8 +56,13 @@ async def investigate(
     return InvestigateResponse(
         answer=result.answer,
         report=result.report,
-        evidence=[EvidenceResponse(step=e.step, source=e.source, arguments=e.arguments, error=e.error)
-                  for e in result.evidence],
+        scope=result.scope,
+        namespace=result.namespace,
+        evidence=[
+            EvidenceResponse(step=e.step, source=e.source, arguments=e.arguments, error=e.error,
+                             result=e.result if request.include_evidence_results else None)
+            for e in result.evidence
+        ],
         notes=result.notes,
         steps=result.steps,
         llm_calls=result.llm_calls,

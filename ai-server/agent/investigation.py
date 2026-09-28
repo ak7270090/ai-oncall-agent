@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from langchain_core.messages import AIMessage
 from langgraph.graph.state import CompiledStateGraph
 
-from agent.models import Evidence, IncidentReport
+from agent.models import Evidence, IncidentReport, IncidentScope
 from agent.report import render_markdown
 
 # understand, sweep, focus, follow_dependencies, correlate, report; each follow-up
@@ -16,6 +16,8 @@ STEPS_PER_FOLLOW_UP = 2
 class InvestigationResult:
     report: IncidentReport
     answer: str
+    scope: IncidentScope
+    namespace: str
     evidence: list[Evidence]
     notes: list[str]
     steps: list[str]
@@ -37,6 +39,8 @@ async def run_investigation(graph: CompiledStateGraph, question: str, max_follow
     return InvestigationResult(
         report=final["report"],
         answer=render_markdown(final["report"]),
+        scope=final["scope"],
+        namespace=final["namespace"],
         evidence=final["evidence"],
         notes=final["notes"],
         steps=final["steps"],

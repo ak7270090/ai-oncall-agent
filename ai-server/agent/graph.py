@@ -9,6 +9,7 @@ deterministic code calling MCP tools, so the key checks run every time.
 
 import json
 import operator
+from datetime import datetime, timezone
 from typing import Annotated, Any, TypedDict
 
 from langchain_core.language_models import BaseChatModel
@@ -48,11 +49,50 @@ def evidence_json(evidence: list[Evidence]) -> str:
     return json.dumps(items, default=str, separators=(",", ":"))
 
 
+def correlation_messages(
+    question: str, scope: IncidentScope, namespace: str, evidence: list[Evidence]
+) -> list[BaseMessage]:
+    return [
+        SystemMessage(CORRELATE_PROMPT),
+        HumanMessage("\n".join([
+            f"Current time (UTC): {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
+            f"Incident report: {question}",
+            f"Understood scope: {scope.model_dump_json()}",
+            f"Namespace: {namespace}",
+            f"Evidence: {evidence_json(evidence)}",
+        ])),
+    ]
+
+
+def report_messages(question: str, evidence: list[Evidence], notes: list[str], analysis: str) -> list[BaseMessage]:
+    return [
+        SystemMessage(REPORT_PROMPT),
+        HumanMessage("\n".join([
+            f"Incident report: {question}",
+            f"Evidence: {evidence_json(evidence)}",
+            f"Investigation notes: {'; '.join(notes) or 'none'}",
+            f"Analysis: {analysis or '(no analysis produced)'}",
+        ])),
+    ]
+
+
 async def invoke_llm(runnable: Any, messages: list[BaseMessage]) -> Any:
     try:
         return await runnable.ainvoke(messages)
     except Exception as error:
         raise LLMError(f"LLM call failed: {error}") from error
+
+
+async def analyze_evidence(
+    chat_model: BaseChatModel, question: str, scope: IncidentScope, namespace: str,
+    evidence: list[Evidence], notes: list[str],
+) -> tuple[str, IncidentReport]:
+    """correlate + report on already-gathered evidence, without follow-up tool calls.
+    Used to replay saved investigations when tuning prompts."""
+    analysis = await invoke_llm(chat_model, correlation_messages(question, scope, namespace, evidence))
+    report = await invoke_llm(chat_model.with_structured_output(IncidentReport),
+                              report_messages(question, evidence, notes, analysis.text))
+    return analysis.text, report
 
 
 def _tool_messages_to_evidence(messages: list[BaseMessage], calls: dict[str, dict]) -> list[Evidence]:
@@ -104,21 +144,14 @@ def build_investigation_graph(
 
     async def follow_dependencies(state: InvestigationState) -> dict:
         notes: list[str] = []
-        found = await gather.follow_dependencies(toolbox, state["namespace"], state["evidence"], notes)
+        found = await gather.follow_dependencies(
+            toolbox, state["namespace"], state["evidence"], state["scope"].window_minutes, notes)
         return {"evidence": found, "notes": notes, "steps": [FOLLOW_DEPENDENCIES]}
 
     async def correlate(state: InvestigationState) -> dict:
         new_messages: list[BaseMessage] = []
         if not state["messages"]:
-            new_messages = [
-                SystemMessage(CORRELATE_PROMPT),
-                HumanMessage(
-                    f"Incident report: {state['question']}\n"
-                    f"Understood scope: {state['scope'].model_dump_json()}\n"
-                    f"Namespace: {state['namespace']}\n"
-                    f"Evidence: {evidence_json(state['evidence'])}"
-                ),
-            ]
+            new_messages = correlation_messages(state["question"], state["scope"], state["namespace"], state["evidence"])
         response = await invoke_llm(correlate_model, [*state["messages"], *new_messages])
         return {"messages": [*new_messages, response], "steps": [CORRELATE], "llm_calls": 1}
 
@@ -139,20 +172,9 @@ def build_investigation_graph(
         }
 
     async def report(state: InvestigationState) -> dict:
-        analysis = "\n\n".join(
-            m.text for m in state["messages"] if isinstance(m, AIMessage) and m.text
-        ) or "(no analysis produced)"
-        notes = "; ".join(state["notes"]) or "none"
-        result = await invoke_llm(report_model, [
-            SystemMessage(REPORT_PROMPT),
-            HumanMessage(
-                f"Incident report: {state['question']}\n"
-                f"Evidence: {evidence_json(state['evidence'])}\n"
-                f"Investigation notes: {notes}\n"
-                f"Analysis: {analysis}"
-            ),
-        ])
-        return {"report": result, "steps": [REPORT], "llm_calls": 1}
+        analysis = "\n\n".join(m.text for m in state["messages"] if isinstance(m, AIMessage) and m.text)
+        messages = report_messages(state["question"], state["evidence"], state["notes"], analysis)
+        return {"report": await invoke_llm(report_model, messages), "steps": [REPORT], "llm_calls": 1}
 
     graph = StateGraph(InvestigationState)
     for name, node in [(UNDERSTAND, understand), (SWEEP, sweep), (FOCUS, focus),

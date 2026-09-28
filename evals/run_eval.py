@@ -27,7 +27,9 @@ NAMESPACE = os.environ.get("EVAL_NAMESPACE", "shop")
 SYMPTOM_TIMEOUT_SECONDS = 300
 HEALTHY_TIMEOUT_SECONDS = 420
 INVESTIGATE_TIMEOUT_SECONDS = 600
-POLL_SECONDS = 5
+POLL_SECONDS = 3
+# Like an alert's `for:` duration: page once the symptom has held for a moment, not on its first sample.
+SYMPTOM_SETTLE_SECONDS = 20
 
 
 @dataclass
@@ -42,6 +44,7 @@ class Result:
     seconds: float
     likely_cause: str
     error: str | None = None
+    response: dict | None = None  # full /investigate response incl. raw evidence, for `make replay`
 
 
 def kubectl(*args: str) -> str:
@@ -97,12 +100,15 @@ def run_scenario(scenario: Scenario) -> Result:
     try:
         kubectl("apply", "-k", str(REPO_ROOT / "kubernetes" / "scenarios" / scenario.name))
         wait_until(lambda: holds(scenario.symptom), SYMPTOM_TIMEOUT_SECONDS, f"{scenario.name} symptom")
+        time.sleep(SYMPTOM_SETTLE_SECONDS)
         started = time.monotonic()
-        body = http_json(f"{AI_SERVER_URL}/investigate", {"question": scenario.question}, INVESTIGATE_TIMEOUT_SECONDS)
+        body = http_json(f"{AI_SERVER_URL}/investigate",
+                         {"question": scenario.question, "include_evidence_results": True}, INVESTIGATE_TIMEOUT_SECONDS)
         report = body["report"]
         passed, got = grade(scenario, report)
         return Result(scenario.name, passed, expected, got, report.get("confidence"), body.get("llm_calls"),
-                      len(body.get("evidence", [])), round(time.monotonic() - started, 1), report.get("likely_cause", ""))
+                      len(body.get("evidence", [])), round(time.monotonic() - started, 1), report.get("likely_cause", ""),
+                      response=body)
     except Exception as error:
         return Result(scenario.name, False, expected, "-", None, None, None,
                       round(time.monotonic() - started, 1), "", error=repr(error))

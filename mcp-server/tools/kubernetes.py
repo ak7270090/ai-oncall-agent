@@ -46,8 +46,9 @@ def build_kubernetes_tools(backend: ClusterBackend, settings: Settings) -> list[
         lines: Annotated[int, Field(ge=1, le=MAX_LOG_LINES, description="Recent lines to return")] = DEFAULT_LOG_LINES,
         previous: Annotated[bool, Field(description="Logs of the previous (crashed) container instead of the current one")] = False,
     ) -> PodLogs:
-        """Recent log lines of a pod (newest last). For a crash-looping pod set
-        previous=true: the current container has usually only just started."""
+        """Recent log lines of a pod (newest last), each starting with its timestamp. For a
+        crash-looping pod set previous=true: the current container has usually only just
+        started. Compare timestamps with now: old errors may belong to an earlier problem."""
         require_allowed(namespace)
         return PodLogs(
             namespace=namespace, pod=pod, previous=previous,

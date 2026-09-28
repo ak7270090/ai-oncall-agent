@@ -216,6 +216,14 @@ message.
 - Change the investigation graph or prompts only together with an eval run, and
   keep a change only if the pass rate doesn't drop. Note the before and after
   in the commit message.
+- Tune reasoning with `make replay` on evidence saved by the eval (seconds), and
+  repeat each case (`TIMES=5`), since one LLM answer can be luck. Finish with one
+  full `make eval`.
+- When the agent is wrong, read the saved evidence before touching prompts. Most
+  misses so far were missing or misleading evidence, not bad reasoning.
+- Report categories must be unambiguous. `cause_category` is chosen by failure
+  mechanism in a fixed precedence order, and a preceding rollout never overrides
+  a more specific mechanism.
 
 ## 18. Observability of the sample services
 
@@ -231,4 +239,7 @@ message.
   about a remote system.
 - When a call to a dependency fails, log an error that names the dependency and
   URL (`upstream unavailable: POST http://payment-service/payments`). A bare
-  `502` in an access log can't be traced to its cause.
+  `502` in an access log can't be traced to its cause. Log slow calls the same
+  way (`slow upstream call: … took 3.02s`).
+- Keep probe and scrape requests (`/health`, `/metrics`) out of access logs. At
+  a 5s scrape interval they otherwise push real traffic out of any log tail.

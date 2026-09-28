@@ -17,7 +17,7 @@ MCP_TOKEN_TTL   ?= 24h
 KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
 COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f docker-compose.yml -f docker-compose.kind.yml
 
-.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig scenario scenario-reset eval
+.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig scenario scenario-reset eval replay
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
@@ -34,6 +34,7 @@ help:
 	@echo "scenario NAME=x     inject an incident: $(SCENARIOS)"
 	@echo "scenario-reset      back to the healthy base manifests"
 	@echo "eval [NAME=a,b]     run scenarios end to end and grade the agent (needs cluster + both servers)"
+	@echo "replay [NAME=..] [TIMES=n] [RUN=..]  re-run only the LLM reasoning on evidence saved by an eval (seconds)"
 
 setup:
 	for app in $(PYTHON_APPS); do \
@@ -128,6 +129,10 @@ scenario-reset:
 
 eval:
 	cd evals && $(PYTHON) run_eval.py $(if $(NAME),--only $(NAME))
+
+replay:
+	cd ai-server && .venv/$(VENV_BIN)/python ../evals/replay.py $(if $(RUN),--run ../$(RUN)) $(if $(NAME),--only $(NAME)) $(if $(TIMES),--times $(TIMES))
+
 
 cluster-down:
 	kind delete cluster --name $(CLUSTER)

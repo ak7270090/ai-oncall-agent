@@ -105,9 +105,16 @@ def test_deployment_revisions_only_owned_and_newest_first():
     assert detail.revisions[1].image == "payment-service:v1"
 
 
-def test_log_text_split_into_lines():
-    core = SimpleNamespace(read_namespaced_pod_log=lambda *a, **kw: "first\nsecond\n")
-    assert backend_with(core=core).get_pod_logs(NAMESPACE, "p", 10, previous=True) == ["first", "second"]
+def test_logs_are_decoded_into_timestamped_lines():
+    seen = {}
+
+    def read_log(*args, **kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(data="2026-09-28T16:27:02Z first\n2026-09-28T16:27:03Z second\n".encode())
+
+    lines = backend_with(core=SimpleNamespace(read_namespaced_pod_log=read_log)).get_pod_logs(NAMESPACE, "p", 10, previous=True)
+    assert lines == ["2026-09-28T16:27:02Z first", "2026-09-28T16:27:03Z second"]
+    assert seen["timestamps"] is True
 
 
 @pytest.mark.parametrize(("status", "expected"), [(404, "Not found"), (403, "Forbidden by RBAC"), (500, "API error 500")])

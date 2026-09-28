@@ -9,7 +9,7 @@ from typing import Any
 from agent.models import Evidence, IncidentScope
 from agent.toolbox import MCPToolbox
 
-FAILED_CALL_HINTS = ("upstream", "unavailable", "connection refused", "connecterror", "timed out", "timeout",
+FAILED_CALL_HINTS = ("upstream", "slow", "unavailable", "connection refused", "connecterror", "timed out", "timeout",
                      "could not connect")
 
 
@@ -51,16 +51,20 @@ async def _call_all(toolbox: MCPToolbox, calls: list[tuple[str, dict]], step: st
 PROBE_FAILURE_REASON = "Unhealthy"
 
 
-def without_routine_startup_events(events: list[dict], pods: list[dict]) -> tuple[list[dict], int]:
-    """Drop probe failures that are just pods booting: the pod is now ready and never
-    restarted, or it no longer exists (replaced by a rollout). They otherwise read as
-    'connection refused' outages."""
-    settled = {p["name"] for p in pods if p.get("ready") and p.get("restarts", 0) == 0}
+def without_stale_pod_events(events: list[dict], pods: list[dict]) -> tuple[list[dict], int]:
+    """Drop pod events that describe the past, not the present:
+    - any event about a pod that no longer exists (replaced or scaled away; current pods,
+      deployments and metrics show today's state), and
+    - probe failures of pods that are now ready and never restarted (they were booting).
+    Both otherwise read as current outages."""
     current = {p["name"] for p in pods}
+    settled = {p["name"] for p in pods if p.get("ready") and p.get("restarts", 0) == 0}
     kept = []
     for event in events:
-        pod = event.get("object", "").removeprefix("Pod/")
-        if event.get("reason") == PROBE_FAILURE_REASON and (pod in settled or pod not in current):
+        involved = event.get("object", "")
+        pod = involved.removeprefix("Pod/")
+        is_pod_event = involved.startswith("Pod/")
+        if is_pod_event and (pod not in current or (event.get("reason") == PROBE_FAILURE_REASON and pod in settled)):
             continue
         kept.append(event)
     return kept, len(events) - len(kept)
@@ -77,10 +81,10 @@ async def sweep(toolbox: MCPToolbox, namespace: str, notes: list[str]) -> list[E
     pods = first_result(evidence, "list_pods").get("pods", [])
     for item in evidence:
         if item.source == "list_events" and isinstance(item.result, dict):
-            kept, dropped = without_routine_startup_events(item.result.get("events", []), pods)
+            kept, dropped = without_stale_pod_events(item.result.get("events", []), pods)
             if dropped:
-                item.result = {**item.result, "events": kept, "routine_startup_probe_failures_hidden": dropped}
-                notes.append(f"sweep: hid {dropped} probe-failure events from pods that were only starting up")
+                item.result = {**item.result, "events": kept, "stale_pod_events_hidden": dropped}
+                notes.append(f"sweep: hid {dropped} events of pods that no longer exist or were only starting up")
     return evidence
 
 
@@ -171,7 +175,7 @@ def upstream_services(evidence: list[Evidence], known_services: set[str]) -> set
 
 
 async def follow_dependencies(
-    toolbox: MCPToolbox, namespace: str, evidence: list[Evidence], notes: list[str]
+    toolbox: MCPToolbox, namespace: str, evidence: list[Evidence], window_minutes: int, notes: list[str]
 ) -> list[Evidence]:
     """One hop down the dependency chain: inspect services that failing services can't reach."""
     deployments = first_result(evidence, "list_deployments").get("deployments", [])
@@ -182,9 +186,15 @@ async def follow_dependencies(
     pods_checked = {e.arguments.get("app") for e in evidence if e.source == "list_pods"}
     deployments_checked = {e.arguments.get("name") for e in evidence if e.source == "get_deployment"}
     calls: list[tuple[str, dict]] = []
+    metrics_checked = {(e.arguments.get("service"), e.arguments.get("metric")) for e in evidence if e.source == "get_metrics"}
     for service in targets:
         if service not in pods_checked:
             calls.append(("list_pods", {"namespace": namespace, "app": service}))
         if service not in deployments_checked:
             calls.append(("get_deployment", {"namespace": namespace, "name": service}))
+        # Down or just slow? The dependency's own error rate and latency tell them apart.
+        for metric in ("error_rate", "latency_p99_ms"):
+            if (service, metric) not in metrics_checked:
+                calls.append(("get_metrics", {"namespace": namespace, "service": service,
+                                              "metric": metric, "minutes": window_minutes}))
     return await _call_all(toolbox, calls, "follow_dependencies", notes)

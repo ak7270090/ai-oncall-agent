@@ -1,7 +1,7 @@
 import pytest
 
 from agent import Evidence, MCPToolbox, build_investigation_graph, run_investigation
-from agent.evidence import upstream_services, without_routine_startup_events
+from agent.evidence import upstream_services, without_stale_pod_events
 from agent.report import render_markdown
 from config import Settings
 from mcp_client import list_all_tools, to_langchain_tool
@@ -52,6 +52,8 @@ async def test_upstream_named_in_logs_is_investigated():
     followed = {(e.source, e.arguments.get("app") or e.arguments.get("name"))
                 for e in result.evidence if e.step == "follow_dependencies"}
     assert ("list_pods", "payment-service") in followed
+    followed_metrics = {e.arguments["metric"] for e in calls(result, "get_metrics", "follow_dependencies")}
+    assert followed_metrics == {"error_rate", "latency_p99_ms"}
     assert any("payment-service" in note for note in result.notes)
 
 
@@ -123,17 +125,36 @@ def test_markdown_report_has_every_section():
         assert heading in markdown
 
 
-def test_routine_startup_probe_failures_are_hidden_but_real_ones_kept():
+def test_stale_pod_events_are_hidden_but_current_problems_kept():
     pods = [
         {"name": "ready-pod", "ready": True, "restarts": 0},
         {"name": "crashing-pod", "ready": False, "restarts": 5},
     ]
     events = [
-        {"reason": "Unhealthy", "object": "Pod/ready-pod"},
-        {"reason": "Unhealthy", "object": "Pod/replaced-pod"},
+        {"reason": "Unhealthy", "object": "Pod/ready-pod"},       # booted, now fine
+        {"reason": "Unhealthy", "object": "Pod/replaced-pod"},    # pod gone
+        {"reason": "BackOff", "object": "Pod/old-crashed-pod"},   # earlier incident, pod gone
         {"reason": "Unhealthy", "object": "Pod/crashing-pod"},
         {"reason": "BackOff", "object": "Pod/crashing-pod"},
+        {"reason": "ProgressDeadlineExceeded", "object": "Deployment/payment-service"},
     ]
-    kept, dropped = without_routine_startup_events(events, pods)
-    assert dropped == 2
-    assert [e["object"] for e in kept] == ["Pod/crashing-pod", "Pod/crashing-pod"]
+    kept, dropped = without_stale_pod_events(events, pods)
+    assert dropped == 3
+    assert [e["object"] for e in kept] == ["Pod/crashing-pod", "Pod/crashing-pod", "Deployment/payment-service"]
+
+
+async def test_saved_evidence_can_be_reanalysed_without_tools():
+    from agent.graph import analyze_evidence
+    from tests.fakes import ScriptedChatModel, scope
+    model = ScriptedChatModel(messages=iter(["payment-service is down"]), structured_replies=[report()])
+    evidence = [Evidence(source="list_pods", arguments={}, step="sweep", result={"pods": []})]
+    analysis, final = await analyze_evidence(model, "Checkout failing", scope(), "shop", evidence, [])
+    assert analysis == "payment-service is down"
+    assert final.root_cause_service == "payment-service"
+
+
+def test_slow_call_log_lines_point_at_the_dependency():
+    evidence = [Evidence(source="get_pod_logs", arguments={"pod": "order-service-a"}, step="focus", result={"lines": [
+        "WARNING: slow upstream call: POST http://payment-service/payments took 3.02s",
+    ]})]
+    assert upstream_services(evidence, {"payment-service", "order-service"}) == {"payment-service"}

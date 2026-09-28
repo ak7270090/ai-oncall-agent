@@ -150,3 +150,14 @@ def test_foreign_host_header_rejected(server):
     with TestClient(app) as http:
         response = http.post("/mcp", headers={"Host": "evil.example:9000"}, json={})
     assert response.status_code == 421
+
+
+async def test_metric_history_is_summarised_for_the_model(client):
+    series = await call(client, "get_metrics", {"service": "payment-service", "metric": "error_rate"})
+    assert (series["latest"], series["max"]) == (1.0, 1.0)
+    assert series["min"] == 0.002
+
+
+async def test_metric_summary_is_part_of_the_output_schema(client):
+    tools = {t.name: t for t in (await client.list_tools()).tools}
+    assert {"latest", "min", "max"} <= tools["get_metrics"].output_schema["properties"].keys()

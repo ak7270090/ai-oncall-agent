@@ -30,6 +30,17 @@ settings = get_settings()
 # uvicorn's configured logger, so messages appear in the pod log next to access logs.
 logger = logging.getLogger("uvicorn.error")
 app = FastAPI(title=settings.service_name, version=settings.app_version)
+
+
+class ProbeAccessLogFilter(logging.Filter):
+    """Keep kubelet probes and Prometheus scrapes out of the access log so real traffic stays visible."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not any(path in record.getMessage() for path in (" /health ", " /metrics "))
+
+
+logging.getLogger("uvicorn.access").addFilter(ProbeAccessLogFilter())
+
 # The library's default labelled-latency buckets stop at 1s, which caps p99 at 1000 ms.
 LATENCY_BUCKETS_SECONDS = (0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 10)
 Instrumentator(excluded_handlers=["/health", "/metrics"]).instrument(

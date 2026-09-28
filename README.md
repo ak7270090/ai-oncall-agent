@@ -84,6 +84,7 @@ Everything runs through the `Makefile`; `make help` lists the targets:
 | `make mcp-kubeconfig` | Fresh short-lived, read-only credentials for the MCP server |
 | `make scenario NAME=…` / `make scenario-reset` | Inject an incident / return to healthy |
 | `make eval [NAME=a,b]` | Run incident scenarios end to end and grade the agent |
+| `make replay [NAME=..] [TIMES=n]` | Re-run only the LLM reasoning on evidence saved by the last eval (seconds) |
 
 Override variables per run, e.g. `make cluster-up CLUSTER=test`.
 
@@ -299,13 +300,7 @@ Results are printed as a table and saved to `evals/results/` (gitignored).
 Run a subset with `make eval NAME=db-down,high-cpu`. Each run costs about 3
 LLM calls per scenario.
 
-**Latest results: 4/6 pass, and the right root-cause service in 6/6.**
-
-| Scenario | Result |
-| --- | --- |
-| payment-down, db-down (two hops), bad-deploy, crash-loop | ✅ correct category and service, high confidence |
-| high-cpu | ❌ right service, but classed `slow_dependency` instead of `resource_exhaustion` |
-| slow-payments | ❌ right service, but classed `dependency_unavailable` instead of `slow_dependency` |
+**Latest results: 6/6 pass, all with high confidence** (full run about 11 minutes).
 
 **What the eval uncovered and fixed:**
 - payment-service never recovered after a database restart: the table was
@@ -314,14 +309,29 @@ LLM calls per scenario.
 - Average CPU hides CPU-limit throttling. Prometheus now scrapes kubelet
   cAdvisor (`cpu_throttled_ratio`) with a ClusterRole limited to `nodes` and
   `nodes/metrics`.
-- Routine readiness-probe failures from booting pods misled the agent; they're
-  now filtered out of the evidence, with a note saying so.
+- Pod logs came back as one undecoded string with no timestamps. They're now
+  proper lines, each timestamped, so old errors can be told from new ones.
+- Evidence left over from an earlier incident misled the agent: events of pods
+  that no longer exist, probe failures of booting pods, and old error lines.
+  Stale pod events are now filtered (with a note). The model gets the current
+  time, and every metric history carries `latest`, `min` and `max`, to separate
+  a past spike from an ongoing problem.
+- `/health` and `/metrics` requests flooded the access logs and pushed real
+  traffic out of the log tail. They're now filtered out of access logs, and
+  order-service logs slow upstream calls.
+- The categories were ambiguous (a config rollout that makes a service slow
+  looked like `bad_deployment`). `cause_category` is now chosen by failure
+  mechanism, in a fixed precedence order.
 
-**Eval speed.** A full run takes about 30 minutes. Most of it is waiting for
-Prometheus' 1-minute rate window to show a symptom and then to clear before
-the next scenario. The planned speed-ups: shorter rate window and scrape
-interval for eval runs, and skipping the healthy-wait when consecutive
-scenarios touch different services.
+**Working on the agent's reasoning.** `make eval` saves every investigation with
+its raw evidence. `make replay NAME=high-cpu TIMES=5` re-runs only the LLM
+reasoning on that saved evidence in seconds, so prompt changes can be checked
+(repeatedly, since LLM answers vary) without re-injecting incidents. Finish with
+one full `make eval`.
+
+**Eval speed.** Prometheus scrapes every 5s and rates use a 30s window, so
+symptoms show up, and clear, within seconds rather than minutes. The eval waits
+20s after a symptom appears (like an alert's `for:`) before asking the agent.
 
 ## Test
 
