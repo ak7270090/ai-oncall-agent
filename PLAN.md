@@ -82,7 +82,7 @@ Sizes in the roadmap are rough: **S** about a day, **M** two to three days, **L*
 | 14 | Advanced MCP | Prompts: server-provided prompt templates | S | 13 | Not started |
 | 15 | Advanced MCP | Progress, logging, cancellation, live streaming | M | – | Done (MCP logging deprecated, not used) |
 | 16 | Advanced MCP | Completions and tool annotations | S | – | Not started |
-| 17 | Advanced MCP | Sampling: the server borrows the client's LLM | M | 15 | Not started |
+| 17 | Advanced MCP | Sampling + model routing: cheap model for log summaries | L | 15 | Not started |
 | 18 | Write actions | Write tools + human approval through elicitation | L | 16 | Not started |
 | 19 | Security | MCP authentication (tokens, scopes) | M | 18 | Not started |
 | 20 | Security | Tool-level authorization + audit log | M | 19 | Not started |
@@ -129,7 +129,7 @@ building blocks. Each phase adds one where it genuinely helps on-call work.
 | Cancellation | either side | stop a request that is no longer needed | cancelling the client call |
 | Completions | client → server | suggestions for argument values | `@mcp.completion()`, `client.complete` |
 | Tool annotations | server → client | hints: read-only, destructive, idempotent | `@mcp.tool(annotations=ToolAnnotations(...))` |
-| Sampling | server → client | the server asks the client's LLM for text | server session `create_message`, `Client(sampling_callback=…)` |
+| Sampling | server → client | the server asks the client's LLM for text, with model preferences | server session `create_message(model_preferences=…)`, `Client(sampling_callback=…)` |
 | Elicitation | server → client | the server asks the user for input or approval | `ctx.elicit`, `Client(elicitation_callback=…)` |
 | list_changed | server → client | "my tools/resources/prompts changed" | `ctx.notify_tools_changed` |
 
@@ -313,35 +313,94 @@ destructive tool is never bound to the LLM (fake MCP server with such a tool).
 
 **Done when:** annotations are visible and enforced, with a test proving the block.
 
-### Phase 17 — Sampling
+### Phase 17 — Sampling and model routing
 
 **Why:** `get_pod_logs` returns up to 500 lines; most are noise and all of it goes into
-the expensive root-cause prompt. Summarizing at the source would cut tokens, but the
-MCP server shouldn't hold an LLM API key or pick a model.
+the expensive root-cause prompt (about 6k input tokens per LLM call today). Summarizing
+at the source would cut tokens, but the MCP server shouldn't hold an LLM API key or
+pick a model. And summarizing logs doesn't need the best model: a small, cheap, fast one
+is enough, while the root-cause reasoning does need the strong one.
 
-**Concept:** the *server* asks the *client* to run an LLM completion for it. The client
-keeps control: it picks the model, may limit or refuse the request, and pays for it.
-In protocol 2026-07-28 this travels as an "input required" round trip (see above).
+**Concepts:**
+- **Sampling:** the *server* asks the *client* to run an LLM completion for it. The
+  client keeps control: it picks the model, may limit or refuse the request, and pays
+  for it. In protocol 2026-07-28 this travels as an "input required" round trip.
+- **Model preferences (MCP):** a sampling request can say what it needs without naming
+  a provider: `hints` (model names to prefer, e.g. "mini") and three priorities from 0
+  to 1, `costPriority`, `speedPriority`, `intelligencePriority`. The client maps them to
+  a model it actually has; the result reports which `model` answered.
+- **Model routing** (also called *LLM routing* or *model tiering*): sending each task
+  to the cheapest model that does it well, instead of one model for everything.
+  Variants: *static routing* (a fixed model per task), *preference-based routing*
+  (MCP model preferences decide), and *cascading* (try the cheap model first, escalate
+  to the strong one when the answer fails a check).
 
-**Build — mcp-server:**
-- `get_pod_logs(…, summarize: bool = False)`: when true, the tool asks the client
-  (sampling) to condense the lines into: distinct errors, their count, first and last
-  timestamp, and the services they mention. Falls back to raw lines if the client
-  doesn't support sampling.
+**Build — model tiers (ai-server):**
+- Settings, all provider-agnostic `provider:model` strings:
+  `LLM_MODEL` (strong: root-cause reasoning, as today) and `LLM_MODEL_FAST` (cheap and
+  fast: summaries, scope extraction). Optional `LLM_FAST_API_KEY` when the fast model
+  is from another provider (defaults to `LLM_API_KEY`). Empty `LLM_MODEL_FAST` = one
+  model for everything, exactly as today.
+- `agent/llm/model_router.py`: `ModelRouter` holds one chat model per tier
+  (`create_chat_model` for each) and answers two questions:
+  - **per graph step** (static routing): a table in config, e.g.
+    `extract_incident_scope → fast`, `find_root_cause → strong`, `write_report → strong`;
+  - **per sampling request** (preference-based): a hint matching a configured model
+    name wins; otherwise `intelligencePriority` above the cost and speed priorities →
+    strong, else fast.
+- Langfuse already records the model of every LLM call, so per-tier cost shows up in
+  traces and experiments without extra work.
 
-**Build — ai-server:**
-- `Client(sampling_callback=…)` in `mcp_client/connection.py`, answered with the
-  provider-agnostic chat model (a cheaper model can be set with `SAMPLING_LLM_MODEL`),
-  with a token limit, a per-investigation cap, and a span in the trace.
-- `inspect_flagged_problems` asks for summaries when a log is longer than a threshold.
+**Build — sampling (mcp-server):**
+- `get_pod_logs(…, summarize: bool = False)`: when true, the tool asks the client to
+  condense the lines into distinct errors, their count, first and last timestamp, and
+  the services they mention, with
+  `model_preferences = {hints: [], costPriority: 0.8, speedPriority: 0.7, intelligencePriority: 0.2}`
+  and a `max_tokens` limit. Falls back to the raw lines if the client doesn't support
+  sampling or refuses.
+- The tool result says it is a summary and which model wrote it, so the root-cause LLM
+  (and a human reading the trace) knows it isn't the raw log.
 
-**Tests:** sampling request answered by the scripted model; summary used in evidence;
-fallback to raw lines when sampling is refused; cap enforced.
+**Build — sampling (ai-server):**
+- `Client(sampling_callback=…)` in `mcp_client/connection.py`: answers with the model
+  the router picks, enforces a token limit and a cap per investigation, records a span
+  in the trace and a `sampling` event in the live stream ("summarizing 480 log lines of
+  payment-service with the fast model…").
+- `inspect_flagged_problems` asks for summaries when a log is longer than a threshold
+  (`LOG_SUMMARY_MIN_LINES`).
 
-**Measure:** `make eval` with and without summaries, compared in Langfuse: tokens and
-cost per investigation should drop, pass rate must stay 6/6.
+**Optional — cascading:** run `write_report` on the fast model; if its output fails
+validation or cites evidence that doesn't exist, retry once on the strong model. Only
+worth it if the experiments below show the fast model is usually right.
 
-**Done when:** summarized logs reduce tokens per investigation and the eval still passes.
+**Flow:**
+```text
+inspect_flagged_problems ─► tools/call get_pod_logs(pod, summarize=true)
+                               MCP server ─► "input required: sampling,
+                                              prefer cheap + fast"
+AI server: router → fast model ─► summary ─► MCP server returns it as the tool result
+find_root_cause ─► strong model reads summaries instead of 500 raw lines
+```
+
+**Tests:** router: hints, priorities and the per-step table pick the expected tier; one
+tier configured → always that model; sampling request answered by a scripted model;
+summary used in evidence; fallback to raw lines when sampling is refused; cap enforced.
+
+**Measure (the important part):** Langfuse experiments with `make replay`, then
+`make eval`, comparing:
+1. today (one model, raw logs) — the baseline;
+2. strong model + summaries by the fast model;
+3. (2) + the fast model for `extract_incident_scope` and `write_report`.
+
+Keep a configuration only if the pass rate stays 6/6 and confidence doesn't drop; then
+compare cost and latency per investigation.
+
+**Done when:** the router is in place, summaries come from the fast model through MCP
+sampling, and an experiment comparison shows lower cost per investigation at the same
+pass rate.
+
+**Out of scope:** automatic learned routers (a model that predicts which model to use);
+routing across providers by live price or availability.
 
 ---
 
