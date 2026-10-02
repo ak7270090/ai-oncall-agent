@@ -27,7 +27,7 @@ from experiment_tracking import (  # noqa: E402
 )
 from incident_cases import INCIDENT_CASES, IncidentCase  # noqa: E402
 
-from agent import Evidence, IncidentScope, create_chat_model  # noqa: E402
+from agent import Evidence, IncidentScope, create_model_router  # noqa: E402
 from agent.investigation import reanalyze_evidence  # noqa: E402
 from config import get_settings  # noqa: E402
 from tracing import InvestigationTracer, TraceLabels, create_tracer  # noqa: E402
@@ -52,7 +52,7 @@ class ReasoningLoop:
     def __init__(self):
         self._loop = asyncio.new_event_loop()
         threading.Thread(target=self._loop.run_forever, daemon=True).start()
-        self.chat_model = create_chat_model(get_settings())
+        self.models = create_model_router(get_settings())
 
     async def run(self, coroutine) -> dict:
         return await asyncio.wrap_future(asyncio.run_coroutine_threadsafe(coroutine, self._loop))
@@ -66,7 +66,7 @@ async def reanalyze(reasoning: ReasoningLoop, incident: IncidentCase, response: 
     evidence = [Evidence(**{k: e.get(k) for k in ("step", "source", "arguments", "error", "result")})
                 for e in response["evidence"]]
     result = await reanalyze_evidence(
-        reasoning.chat_model, incident.question, IncidentScope(**response["scope"]), response["namespace"],
+        reasoning.models, incident.question, IncidentScope(**response["scope"]), response["namespace"],
         evidence, response["notes"], tracer, TraceLabels(tuple(tracker.trace_tags(incident)), traceparent),
     )
     return {"report": result.report.model_dump()}

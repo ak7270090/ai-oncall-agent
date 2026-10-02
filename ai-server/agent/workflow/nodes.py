@@ -2,7 +2,6 @@
 InvestigationState and returns only the keys it changes (see agent/workflow/state.py).
 agent/workflow/graph.py wires these methods into the LangGraph flow."""
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
@@ -11,6 +10,7 @@ from agent.evidence import collection_steps
 from agent.evidence.collection_steps import CollectionLimits
 from agent.evidence.mcp_toolbox import MCPToolbox, evidence_from_tool_messages
 from agent.llm.chat_model import invoke_llm
+from agent.llm.model_router import ModelRouter
 from agent.llm.prompts import report_messages, root_cause_messages, scope_messages
 from agent.models import IncidentReport, IncidentScope
 from agent.workflow.state import InvestigationState
@@ -19,7 +19,7 @@ from constants import Step
 
 
 class InvestigationNodes:
-    def __init__(self, chat_model: BaseChatModel, toolbox: MCPToolbox, tools: list[BaseTool], settings: Settings):
+    def __init__(self, models: ModelRouter, toolbox: MCPToolbox, tools: list[BaseTool], settings: Settings):
         self._toolbox = toolbox
         self._settings = settings
         self._limits = CollectionLimits(
@@ -28,10 +28,12 @@ class InvestigationNodes:
             max_pods=settings.max_pods_to_inspect,
             max_services=settings.max_services_to_inspect,
             log_lines=settings.log_lines,
+            summarize_logs=settings.summarize_logs,
         )
-        self._scope_model = chat_model.with_structured_output(IncidentScope)
-        self._root_cause_model = chat_model.bind_tools(tools)
-        self._report_model = chat_model.with_structured_output(IncidentReport)
+        # Each LLM step gets the model tier the router assigns it (FAST_MODEL_STEPS).
+        self._scope_model = models.for_step(Step.EXTRACT_INCIDENT_SCOPE).with_structured_output(IncidentScope)
+        self._root_cause_model = models.for_step(Step.FIND_ROOT_CAUSE).bind_tools(tools)
+        self._report_model = models.for_step(Step.WRITE_REPORT).with_structured_output(IncidentReport)
         self._requested_tool_runner = ToolNode(tools)
 
     # --- LLM: understand the question -------------------------------------------------

@@ -9,7 +9,7 @@ from mcp import Client
 from mcp.types import Tool
 
 from agent.models import Evidence
-from constants import Step
+from constants import SUMMARIZE_ARGUMENT, Step
 from mcp_client.langchain_tools import extract_result_text
 from mcp_client.progress import ToolProgressCallback, progress_callback_for
 
@@ -33,6 +33,9 @@ class MCPToolbox:
             inheritable_callbacks=ensure_config().get("callbacks"), local_metadata={"step": step})
         run = await callbacks.on_tool_start({"name": name}, json.dumps(arguments), inputs=arguments, name=name)
         evidence = await self._call_untraced(name, arguments, step)
+        if evidence.error and arguments.get(SUMMARIZE_ARGUMENT):
+            # A summary is optional (it needs the client's LLM): retry for the raw lines.
+            evidence = await self._call_untraced(name, {**arguments, SUMMARIZE_ARGUMENT: False}, step)
         if evidence.error:
             await run.on_tool_error(ToolException(evidence.error))
         else:

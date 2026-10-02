@@ -5,6 +5,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from agent import (
     Evidence,
     MCPToolbox,
+    ModelRouter,
     build_investigation_graph,
     reanalyze_evidence,
     run_investigation,
@@ -54,7 +55,7 @@ async def traced_investigation(span_exporter, chat_model, labels=TraceLabels()):
     async with fake_connector(build_fake_mcp_server(PAYMENT_DOWN))() as mcp_client:
         tools = await list_all_tools(mcp_client)
         graph = build_investigation_graph(
-            chat_model, MCPToolbox(mcp_client, tools), [to_langchain_tool(mcp_client, t) for t in tools], SETTINGS
+            ModelRouter.single(chat_model), MCPToolbox(mcp_client, tools), [to_langchain_tool(mcp_client, t) for t in tools], SETTINGS
         )
         result = await run_investigation(graph, "Checkout is failing", SETTINGS.max_follow_up_rounds,
                                          span_exporter.tracer, labels)
@@ -111,7 +112,7 @@ async def test_reanalysis_is_traced_with_both_llm_calls(span_exporter):
     span_exporter.clear()
     model = ScriptedChatModel(messages=iter(["payment-service is down"]), structured_replies=[report()])
     evidence = [Evidence(source="list_pods", arguments={}, step=Step.COLLECT_NAMESPACE_OVERVIEW, result={"pods": []})]
-    result = await reanalyze_evidence(model, "Checkout failing", scope(), "shop", evidence, [], span_exporter.tracer)
+    result = await reanalyze_evidence(ModelRouter.single(model), "Checkout failing", scope(), "shop", evidence, [], span_exporter.tracer)
     span_exporter.client.flush()
     spans = span_exporter.get_finished_spans()
     assert {span.context.trace_id for span in spans} == {int(result.trace_id, 16)}

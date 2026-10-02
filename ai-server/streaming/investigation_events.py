@@ -56,6 +56,8 @@ class LlmEvent(BaseModel):
     call_id: str
     step: str | None
     status: EventStatus
+    model: str | None = None
+    purpose: str | None = None  # e.g. summarize_pod_logs, for MCP sampling requests
     seconds: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
@@ -142,9 +144,11 @@ class InvestigationEventHandler(AsyncCallbackHandler):
 
     async def on_chat_model_start(self, serialized: dict[str, Any] | None, messages: Any, *, run_id: UUID,
                                   metadata: dict[str, Any] | None = None, **kwargs: Any) -> None:
-        step = _step_of(metadata)
+        step, metadata = _step_of(metadata), metadata or {}
         self._started[run_id] = ("llm", step, time.monotonic())
-        self._events.publish(StreamEvent.LLM, LlmEvent(call_id=_call_id(run_id), step=step, status=EventStatus.STARTED))
+        self._events.publish(StreamEvent.LLM, LlmEvent(
+            call_id=_call_id(run_id), step=step, status=EventStatus.STARTED,
+            model=metadata.get("ls_model_name"), purpose=metadata.get("purpose")))
 
     async def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
         if run_id not in self._started:

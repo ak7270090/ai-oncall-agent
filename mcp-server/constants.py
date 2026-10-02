@@ -48,4 +48,13 @@ SERVICE_OVERVIEW_METRICS: tuple[Metric, ...] = (Metric.REQUEST_RATE, Metric.ERRO
 METRIC_VALUE_DECIMALS = 4
 BYTES_PER_MIB = 1024 * 1024
 
+# Log summaries through MCP sampling (tools/log_summary.py): what the summary request
+# asks of the client's model (0-1; cheap and fast matter more than intelligence), and
+# how many raw lines are kept next to the summary.
+LOG_SUMMARY_TASK = "summarize_pod_logs"
+LOG_SUMMARY_COST_PRIORITY = 0.8
+LOG_SUMMARY_SPEED_PRIORITY = 0.7
+LOG_SUMMARY_INTELLIGENCE_PRIORITY = 0.2
+LOG_LINES_KEPT_WITH_SUMMARY = 5
+
 HEALTH_STATUS_OK = "ok"

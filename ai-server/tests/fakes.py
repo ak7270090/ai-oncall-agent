@@ -2,13 +2,20 @@
 the fake server only mirrors the tool names and result shapes the graph relies on."""
 
 from itertools import count
-from typing import Any
+from typing import Annotated, Any
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.resolve import Resolve, Sample
+from mcp_types import (
+    CreateMessageResult,
+    ModelPreferences,
+    SamplingMessage,
+    TextContent,
+)
 
 from agent import IncidentReport, IncidentScope
 from agent.models import EvidenceCitation
@@ -69,12 +76,26 @@ def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True) -
         """Pod status."""
         return next(p for p in incident["pods"] if p["name"] == pod)
 
+    def request_log_summary(ctx: Context, pod: str, previous: bool, summarize: bool) -> Sample | None:
+        if not summarize or not (ctx.client_capabilities and ctx.client_capabilities.sampling):
+            return None
+        source = incident["previous_logs"] if previous else incident["logs"]
+        text = "\n".join(source.get(pod, []))
+        return Sample([SamplingMessage(role="user", content=TextContent(type="text", text=text))], max_tokens=200,
+                      model_preferences=ModelPreferences(cost_priority=0.8, intelligence_priority=0.2),
+                      metadata={"task": "summarize_pod_logs"})
+
     @server.tool()
-    def get_pod_logs(pod: str, namespace: str = NAMESPACE, lines: int = 50, previous: bool = False) -> dict:
+    def get_pod_logs(pod: str, namespace: str = NAMESPACE, lines: int = 50, previous: bool = False,
+                     summarize: bool = False,
+                     summary: Annotated[CreateMessageResult | None, Resolve(request_log_summary)] = None) -> dict:
         """Pod logs."""
         source = incident["previous_logs"] if previous else incident["logs"]
         if pod not in source:
             raise ToolError(f"Pod '{pod}' has no previous (crashed) container")
+        if summary is not None:
+            return {"pod": pod, "previous": previous, "lines": source[pod][-1:],
+                    "summary": summary.content.text, "summarized_by": summary.model}
         return {"pod": pod, "previous": previous, "lines": source[pod][-lines:]}
 
     @server.tool()
@@ -110,7 +131,7 @@ def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True) -
 
 
 def fake_connector(server: MCPServer):
-    return lambda: connect_to_mcp(server, TEST_MCP_TIMEOUT_SECONDS)
+    return lambda sampling_callback=None: connect_to_mcp(server, TEST_MCP_TIMEOUT_SECONDS, sampling_callback)
 
 
 def tool_call_message(*calls: tuple[str, dict]) -> AIMessage:

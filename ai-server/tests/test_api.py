@@ -3,8 +3,8 @@ from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.runnables import RunnableLambda
 
-from agent import create_chat_model
-from api.dependencies import get_chat_model, get_mcp_connector
+from agent import ModelRouter, create_chat_model
+from api.dependencies import get_mcp_connector, get_model_router
 from config import Settings, get_settings
 from constants import LLM_FAILURE_MESSAGE, Step
 from main import app
@@ -36,14 +36,14 @@ class FailingChatModel(GenericFakeChatModel):
 def client():
     # Isolate from the developer's ai-server/.env and from any real LLM provider.
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
-    app.dependency_overrides[get_chat_model] = lambda: scripted_model()
+    app.dependency_overrides[get_model_router] = lambda: ModelRouter.single(scripted_model())
     app.dependency_overrides[get_mcp_connector] = lambda: fake_connector(build_fake_mcp_server(PAYMENT_DOWN))
     yield TestClient(app)
     app.dependency_overrides.clear()
 
 
 def use_chat_model(chat_model):
-    app.dependency_overrides[get_chat_model] = lambda: chat_model
+    app.dependency_overrides[get_model_router] = lambda: ModelRouter.single(chat_model)
 
 
 def test_health(client):
@@ -95,14 +95,14 @@ def test_llm_failure_returns_502(client):
 def test_missing_llm_credentials_returns_502(client, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     settings_without_key = Settings(_env_file=None, llm_model="openai:gpt-5.4-mini")
-    app.dependency_overrides[get_chat_model] = lambda: create_chat_model(settings_without_key)
+    app.dependency_overrides[get_model_router] = lambda: ModelRouter.single(create_chat_model(settings_without_key))
     response = client.post("/investigate", json={"question": "hi"})
     assert response.status_code == 502
     assert response.json()["detail"] == LLM_FAILURE_MESSAGE
 
 
 def test_unreachable_mcp_returns_503(client):
-    app.dependency_overrides[get_mcp_connector] = lambda: lambda: connect_to_mcp(UNREACHABLE_MCP_URL, 5)
+    app.dependency_overrides[get_mcp_connector] = lambda: lambda sampling_callback=None: connect_to_mcp(UNREACHABLE_MCP_URL, 5)
     assert client.get("/ready").status_code == 503
     assert client.get("/tools").status_code == 503
     assert client.post("/investigate", json={"question": "hi"}).status_code == 503

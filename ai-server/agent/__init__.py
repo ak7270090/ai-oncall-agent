@@ -5,6 +5,8 @@ from agent.investigation import (
     run_investigation,
 )
 from agent.llm.chat_model import LLMError, create_chat_model
+from agent.llm.model_router import ModelRouter, create_model_router
+from agent.llm.sampling import SamplingResponder
 from agent.models import Evidence, IncidentReport, IncidentScope
 from agent.workflow.graph import build_investigation_graph
 
@@ -15,9 +17,12 @@ __all__ = [
     "InvestigationResult",
     "LLMError",
     "MCPToolbox",
+    "ModelRouter",
     "ReanalysisResult",
+    "SamplingResponder",
     "build_investigation_graph",
     "create_chat_model",
+    "create_model_router",
     "reanalyze_evidence",
     "run_investigation",
 ]

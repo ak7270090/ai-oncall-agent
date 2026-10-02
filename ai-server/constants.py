@@ -48,6 +48,14 @@ class EventStatus(StrEnum):
     FAILED = "failed"
 
 
+class ModelTier(StrEnum):
+    """Strong: the configured LLM_MODEL, for reasoning. Fast: LLM_MODEL_FAST, a cheaper
+    and faster model for simple tasks (log summaries); falls back to strong when unset."""
+
+    STRONG = "strong"
+    FAST = "fast"
+
+
 class Metric(StrEnum):
     """Metric names accepted by the get_metrics tool."""
 
@@ -82,6 +90,13 @@ MCP_SDK_TRACER_NAME = "mcp-python-sdk"
 TRACEPARENT_PATTERN = r"00-(?P<trace_id>[0-9a-f]{32})-(?P<span_id>[0-9a-f]{16})-[0-9a-f]{2}"
 # Most trace tags a caller may send with /investigate.
 MAX_TRACE_TAGS = 10
+
+# get_pod_logs argument asking the MCP server for a summary (via MCP sampling).
+SUMMARIZE_ARGUMENT = "summarize"
+# Sampling requests carry max_tokens; reasoning models count hidden reasoning tokens in
+# their output limit, so the limit is applied to the answer text instead, at roughly
+# this many characters per token.
+APPROX_CHARS_PER_TOKEN = 4
 
 # Longest error text sent in a streamed tool event.
 MAX_STREAMED_ERROR_LENGTH = 300

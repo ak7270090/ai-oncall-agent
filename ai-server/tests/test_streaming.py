@@ -3,11 +3,11 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from agent import IncidentReport
+from agent import IncidentReport, ModelRouter
 from api.dependencies import (
     InvestigationDependencies,
-    get_chat_model,
     get_mcp_connector,
+    get_model_router,
 )
 from api.routes import investigate_stream
 from api.schemas import InvestigateRequest
@@ -29,7 +29,7 @@ QUESTION = {"question": "Checkout is failing"}
 @pytest.fixture
 def client():
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
-    app.dependency_overrides[get_chat_model] = lambda: scripted_model()
+    app.dependency_overrides[get_model_router] = lambda: ModelRouter.single(scripted_model())
     app.dependency_overrides[get_mcp_connector] = lambda: fake_connector(build_fake_mcp_server(PAYMENT_DOWN))
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -79,7 +79,7 @@ def test_stream_shows_steps_tools_progress_and_ends_with_the_report(client):
 
 
 def test_stream_ends_with_an_error_event_when_the_llm_fails(client):
-    app.dependency_overrides[get_chat_model] = lambda: FailingChatModel(messages=iter([]))
+    app.dependency_overrides[get_model_router] = lambda: ModelRouter.single(FailingChatModel(messages=iter([])))
     last_name, error = stream_events(client)[-1]
     assert last_name == StreamEvent.ERROR
     assert error == {"status_code": 502, "detail": LLM_FAILURE_MESSAGE}
@@ -89,7 +89,7 @@ def test_stream_ends_with_an_error_event_when_the_llm_fails(client):
 async def test_closing_the_stream_cancels_the_investigation():
     chat_model = scripted_model()
     dependencies = InvestigationDependencies(
-        Settings(_env_file=None), chat_model, fake_connector(build_fake_mcp_server(PAYMENT_DOWN)), DISABLED_TRACER)
+        Settings(_env_file=None), ModelRouter.single(chat_model), fake_connector(build_fake_mcp_server(PAYMENT_DOWN)), DISABLED_TRACER)
     stream = investigate_stream(InvestigateRequest(**QUESTION), dependencies)
 
     first = await anext(stream)

@@ -8,12 +8,12 @@ extract_incident_scope / find_root_cause / write_report use the LLM; the three
 collection steps are deterministic code calling MCP tools, so the key checks run every time.
 """
 
-from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from agent.evidence.mcp_toolbox import MCPToolbox
+from agent.llm.model_router import ModelRouter
 from agent.workflow.nodes import InvestigationNodes
 from agent.workflow.state import InvestigationState
 from config import Settings
@@ -21,9 +21,9 @@ from constants import Step
 
 
 def build_investigation_graph(
-    chat_model: BaseChatModel, toolbox: MCPToolbox, tools: list[BaseTool], settings: Settings
+    models: ModelRouter, toolbox: MCPToolbox, tools: list[BaseTool], settings: Settings
 ) -> CompiledStateGraph:
-    nodes = InvestigationNodes(chat_model, toolbox, tools, settings)
+    nodes = InvestigationNodes(models, toolbox, tools, settings)
     graph = StateGraph(InvestigationState)
 
     graph.add_node(Step.EXTRACT_INCIDENT_SCOPE, nodes.extract_incident_scope)

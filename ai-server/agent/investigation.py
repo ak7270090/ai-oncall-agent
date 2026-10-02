@@ -4,15 +4,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langgraph.graph.state import CompiledStateGraph
 
 from agent.llm.chat_model import invoke_llm
+from agent.llm.model_router import ModelRouter
 from agent.llm.prompts import report_messages, root_cause_messages
+from agent.llm.sampling import SamplingResponder
 from agent.models import Evidence, IncidentReport, IncidentScope
 from agent.workflow.state import new_investigation_state
-from constants import GRAPH_STEPS_PER_FOLLOW_UP, GRAPH_STEPS_WITHOUT_FOLLOW_UPS
+from constants import GRAPH_STEPS_PER_FOLLOW_UP, GRAPH_STEPS_WITHOUT_FOLLOW_UPS, Step
 from tracing import DISABLED_TRACER, NO_LABELS, InvestigationTracer, TraceLabels
 
 
@@ -39,11 +40,14 @@ def _still_wanted_tools(messages: list) -> bool:
 async def run_investigation(
     graph: CompiledStateGraph, question: str, max_follow_up_rounds: int,
     tracer: InvestigationTracer = DISABLED_TRACER, labels: TraceLabels = NO_LABELS,
-    callbacks: Sequence[BaseCallbackHandler] = (),
+    callbacks: Sequence[BaseCallbackHandler] = (), sampling: SamplingResponder | None = None,
 ) -> InvestigationResult:
-    """`callbacks` receive every LangChain event of the run besides tracing (e.g. live streaming)."""
+    """`callbacks` receive every LangChain event of the run besides tracing (e.g. live streaming).
+    `sampling` (the MCP connection's sampling callback) records its LLM calls with them too."""
     recursion_limit = GRAPH_STEPS_WITHOUT_FOLLOW_UPS + GRAPH_STEPS_PER_FOLLOW_UP * max_follow_up_rounds + 1
     with tracer.trace_investigation(question, labels) as trace:
+        if sampling:
+            sampling.attach_callbacks([*trace.callbacks, *callbacks])
         final = await graph.ainvoke(
             new_investigation_state(question),
             {"recursion_limit": recursion_limit, "callbacks": [*trace.callbacks, *callbacks]})
@@ -86,7 +90,7 @@ class ReanalysisResult:
 
 
 async def reanalyze_evidence(
-    chat_model: BaseChatModel, question: str, scope: IncidentScope, namespace: str,
+    models: ModelRouter, question: str, scope: IncidentScope, namespace: str,
     evidence: list[Evidence], notes: list[str],
     tracer: InvestigationTracer = DISABLED_TRACER, labels: TraceLabels = NO_LABELS,
 ) -> ReanalysisResult:
@@ -94,9 +98,10 @@ async def reanalyze_evidence(
     tool calls. Used by `make replay` to test prompt changes on saved investigations."""
     with tracer.trace_investigation(question, labels) as trace:
         traced = {"callbacks": trace.callbacks}
-        analysis = await invoke_llm(chat_model.with_config(traced),
+        analysis = await invoke_llm(models.for_step(Step.FIND_ROOT_CAUSE).with_config(traced),
                                     root_cause_messages(question, scope, namespace, evidence))
-        report = await invoke_llm(chat_model.with_structured_output(IncidentReport).with_config(traced),
+        report_model = models.for_step(Step.WRITE_REPORT).with_structured_output(IncidentReport)
+        report = await invoke_llm(report_model.with_config(traced),
                                   report_messages(question, evidence, notes, analysis.text))
         trace.record_outcome(report.to_markdown(), _report_outcome(report))
     return ReanalysisResult(analysis.text, report, trace.trace_id)

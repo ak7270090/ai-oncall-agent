@@ -1,6 +1,12 @@
 import pytest
 
-from agent import Evidence, MCPToolbox, build_investigation_graph, run_investigation
+from agent import (
+    Evidence,
+    MCPToolbox,
+    ModelRouter,
+    build_investigation_graph,
+    run_investigation,
+)
 from agent.evidence.helpers import services_blamed_in_logs, without_stale_pod_events
 from agent.investigation import reanalyze_evidence
 from config import Settings
@@ -26,7 +32,7 @@ async def investigate(chat_model, incident=PAYMENT_DOWN, with_metrics=True):
     async with fake_connector(build_fake_mcp_server(incident, with_metrics))() as mcp_client:
         tools = await list_all_tools(mcp_client)
         graph = build_investigation_graph(
-            chat_model, MCPToolbox(mcp_client, tools), [to_langchain_tool(mcp_client, t) for t in tools], SETTINGS
+            ModelRouter.single(chat_model), MCPToolbox(mcp_client, tools), [to_langchain_tool(mcp_client, t) for t in tools], SETTINGS
         )
         return await run_investigation(graph, "Checkout is failing", SETTINGS.max_follow_up_rounds)
 
@@ -156,7 +162,7 @@ async def test_saved_evidence_can_be_reanalysed_without_tools():
     from tests.fakes import ScriptedChatModel, scope
     model = ScriptedChatModel(messages=iter(["payment-service is down"]), structured_replies=[report()])
     evidence = [Evidence(source="list_pods", arguments={}, step=Step.COLLECT_NAMESPACE_OVERVIEW, result={"pods": []})]
-    result = await reanalyze_evidence(model, "Checkout failing", scope(), "shop", evidence, [])
+    result = await reanalyze_evidence(ModelRouter.single(model), "Checkout failing", scope(), "shop", evidence, [])
     assert result.analysis == "payment-service is down"
     assert result.report.root_cause_service == "payment-service"
     assert result.trace_id is None

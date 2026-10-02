@@ -63,6 +63,11 @@ class PodLogs(BaseModel):
     pod: str
     previous: bool
     lines: list[str]
+    # Set when summarize=true and the client summarized the logs (MCP sampling): `lines`
+    # then holds only the newest few lines.
+    summary: str | None = None
+    summarized_by: str | None = None
+    summarized_lines: int | None = None
 
 
 class DeploymentSummary(BaseModel):

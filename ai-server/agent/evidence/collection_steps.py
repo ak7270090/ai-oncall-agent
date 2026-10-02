@@ -18,7 +18,7 @@ from agent.evidence.helpers import (
 )
 from agent.evidence.mcp_toolbox import MCPToolbox
 from agent.models import Evidence, IncidentScope
-from constants import McpTool, Metric, Step
+from constants import SUMMARIZE_ARGUMENT, McpTool, Metric, Step
 
 ToolCall = tuple[McpTool, dict]
 
@@ -30,6 +30,14 @@ class CollectionLimits:
     max_pods: int
     max_services: int
     log_lines: int
+    summarize_logs: bool = False
+
+
+def _log_arguments(namespace: str, pod: str, previous: bool, limits: CollectionLimits) -> dict:
+    arguments = {"namespace": namespace, "pod": pod, "lines": limits.log_lines, "previous": previous}
+    if limits.summarize_logs:
+        arguments[SUMMARIZE_ARGUMENT] = True
+    return arguments
 
 
 async def run_tool_calls(toolbox: MCPToolbox, calls: list[ToolCall], step: Step, notes: list[str]) -> list[Evidence]:
@@ -67,8 +75,7 @@ def _unhealthy_pod_checks(pods: list[dict], namespace: str, suspected: list[str]
     for pod in sorted(unhealthy_pods(pods), key=lambda p: not is_suspected(p.get("app") or "", suspected))[:limits.max_pods]:
         crashed_before = pod.get("restarts", 0) > 0
         calls.append((McpTool.GET_POD_STATUS, {"namespace": namespace, "pod": pod["name"]}))
-        calls.append((McpTool.GET_POD_LOGS, {"namespace": namespace, "pod": pod["name"],
-                                             "lines": limits.log_lines, "previous": crashed_before}))
+        calls.append((McpTool.GET_POD_LOGS, _log_arguments(namespace, pod["name"], crashed_before, limits)))
     return calls
 
 
@@ -92,8 +99,7 @@ def _degraded_service_checks(
         if running_pod and service not in already_inspected_apps:
             # Pods can be Running yet fail or crawl; logs name the failing dependency and
             # status shows the resource limits to compare CPU/memory against.
-            calls.append((McpTool.GET_POD_LOGS, {"namespace": namespace, "pod": running_pod["name"],
-                                                 "lines": limits.log_lines, "previous": False}))
+            calls.append((McpTool.GET_POD_LOGS, _log_arguments(namespace, running_pod["name"], False, limits)))
             if service in slow:
                 calls.append((McpTool.GET_POD_STATUS, {"namespace": namespace, "pod": running_pod["name"]}))
     return calls

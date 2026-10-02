@@ -7,7 +7,12 @@ from typing import Annotated
 from fastapi import APIRouter, Header
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from agent import MCPToolbox, build_investigation_graph, run_investigation
+from agent import (
+    MCPToolbox,
+    SamplingResponder,
+    build_investigation_graph,
+    run_investigation,
+)
 from api.dependencies import (
     InvestigationDependencies,
     InvestigationDependenciesDep,
@@ -94,10 +99,11 @@ async def _run_investigation(
 ) -> InvestigateResponse:
     settings = dependencies.settings
     on_progress = events.on_tool_progress if events else None
-    async with dependencies.open_mcp() as mcp_client:
+    sampling = SamplingResponder(dependencies.models, settings.max_samplings_per_investigation)
+    async with dependencies.open_mcp(sampling) as mcp_client:
         tools = await list_all_tools(mcp_client)
         graph = build_investigation_graph(
-            dependencies.chat_model,
+            dependencies.models,
             MCPToolbox(mcp_client, tools, on_progress),
             [to_langchain_tool(mcp_client, tool, on_progress) for tool in tools],
             settings,
@@ -105,7 +111,7 @@ async def _run_investigation(
         result = await run_investigation(
             graph, request.question, settings.max_follow_up_rounds, dependencies.tracer,
             TraceLabels(tuple(request.trace_tags), traceparent),
-            [events.callback_handler()] if events else (),
+            [events.callback_handler()] if events else (), sampling,
         )
     return InvestigateResponse(
         answer=result.answer,

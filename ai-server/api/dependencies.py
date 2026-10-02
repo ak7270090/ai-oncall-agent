@@ -5,20 +5,20 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
-from langchain_core.language_models import BaseChatModel
 from mcp import Client
 
-from agent import create_chat_model
+from agent import ModelRouter, create_model_router
 from config import Settings, get_settings
 from mcp_client import connect_to_mcp
 from tracing import InvestigationTracer, create_tracer
 
-MCPConnector = Callable[[], AbstractAsyncContextManager[Client]]
+# Opens an MCP session; optionally with a sampling callback (MCP sampling).
+MCPConnector = Callable[..., AbstractAsyncContextManager[Client]]
 
 
 @lru_cache
-def get_chat_model() -> BaseChatModel:
-    return create_chat_model(get_settings())
+def get_model_router() -> ModelRouter:
+    return create_model_router(get_settings())
 
 
 def get_tracer(settings: Annotated[Settings, Depends(get_settings)]) -> InvestigationTracer:
@@ -27,11 +27,12 @@ def get_tracer(settings: Annotated[Settings, Depends(get_settings)]) -> Investig
 
 
 def get_mcp_connector(settings: Annotated[Settings, Depends(get_settings)]) -> MCPConnector:
-    return lambda: connect_to_mcp(settings.mcp_server_url, settings.mcp_timeout_seconds)
+    return lambda sampling_callback=None: connect_to_mcp(
+        settings.mcp_server_url, settings.mcp_timeout_seconds, sampling_callback)
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
-ChatModelDep = Annotated[BaseChatModel, Depends(get_chat_model)]
+ModelRouterDep = Annotated[ModelRouter, Depends(get_model_router)]
 MCPConnectorDep = Annotated[MCPConnector, Depends(get_mcp_connector)]
 TracerDep = Annotated[InvestigationTracer, Depends(get_tracer)]
 
@@ -41,15 +42,15 @@ class InvestigationDependencies:
     """Everything an investigation endpoint needs, resolved once per request."""
 
     settings: Settings
-    chat_model: BaseChatModel
+    models: ModelRouter
     open_mcp: MCPConnector
     tracer: InvestigationTracer
 
 
 def get_investigation_dependencies(
-    settings: SettingsDep, chat_model: ChatModelDep, open_mcp: MCPConnectorDep, tracer: TracerDep
+    settings: SettingsDep, models: ModelRouterDep, open_mcp: MCPConnectorDep, tracer: TracerDep
 ) -> InvestigationDependencies:
-    return InvestigationDependencies(settings, chat_model, open_mcp, tracer)
+    return InvestigationDependencies(settings, models, open_mcp, tracer)
 
 
 InvestigationDependenciesDep = Annotated[InvestigationDependencies, Depends(get_investigation_dependencies)]

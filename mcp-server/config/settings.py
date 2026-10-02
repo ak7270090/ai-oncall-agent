@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     metrics_rate_window: str = "30s"
     metrics_step_seconds: int = 60
 
+    # get_pod_logs(summarize=true): summarize only logs at least this long; limit the
+    # summary's length; reuse fetched lines this long (the sampling retry must see the same).
+    log_summary_min_lines: int = 40
+    log_summary_max_tokens: int = 500
+    log_cache_seconds: float = 30
+
 
 @lru_cache
 def get_settings() -> Settings:

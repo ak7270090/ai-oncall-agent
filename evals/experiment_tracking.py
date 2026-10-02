@@ -25,7 +25,7 @@ from incident_cases import IncidentCase
 from langfuse import Evaluation, Langfuse
 from opentelemetry import trace as otel_trace
 
-from config import get_settings
+from config import Settings, get_settings
 
 DATASET_NAME = "oncall-incidents"
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -56,6 +56,15 @@ def _git_commit() -> str:
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
     return f"{commit}-dirty" if changed else commit
+
+
+def describe_model_setup(settings: Settings) -> str:
+    """Which models ran, e.g. "openai:gpt-5.4-mini + fast openai:gpt-5.4-nano (write_report, summaries)".
+    Read from ai-server/.env, which the eval and the AI server share."""
+    if not settings.llm_model_fast:
+        return settings.llm_model
+    uses = [*settings.fast_model_steps, *(["summaries"] if settings.summarize_logs else [])]
+    return f"{settings.llm_model} + fast {settings.llm_model_fast} ({', '.join(uses) or 'sampling'})"
 
 
 def _dataset_item_id(case: IncidentCase) -> str:
@@ -97,7 +106,7 @@ class ExperimentTracker:
         """`kind` is "eval" or "replay"; it starts the run name and tags every trace."""
         settings = get_settings()
         self._kind = kind
-        self._llm_model = settings.llm_model
+        self._llm_model = describe_model_setup(settings)
         self._commit = _git_commit()
         self._started = f"{datetime.now():%Y-%m-%d %H:%M}"
         self._client = None
