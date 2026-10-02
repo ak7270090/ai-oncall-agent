@@ -7,7 +7,7 @@ from typing import Any
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from agent import IncidentReport, IncidentScope
@@ -16,6 +16,7 @@ from mcp_client import connect_to_mcp
 
 TEST_MCP_TIMEOUT_SECONDS = 5
 NAMESPACE = "shop"
+OVERVIEW_METRICS = ("request_rate", "error_rate", "latency_p99_ms")
 _call_ids = count()
 
 PAYMENT_DOWN: dict[str, Any] = {
@@ -94,8 +95,10 @@ def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True) -
 
     if with_metrics:
         @server.tool()
-        def get_service_overview(namespace: str = NAMESPACE) -> dict:
+        async def get_service_overview(ctx: Context, namespace: str = NAMESPACE) -> dict:
             """Service health."""
+            for done, metric in enumerate(OVERVIEW_METRICS, start=1):
+                await ctx.report_progress(done, len(OVERVIEW_METRICS), f"{metric} queried")
             return {"namespace": namespace, "window": "1m", "services": incident["overview"]}
 
         @server.tool()

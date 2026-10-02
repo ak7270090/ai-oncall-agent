@@ -30,6 +30,24 @@ class McpTool(StrEnum):
     LIST_EVENTS = "list_events"
 
 
+class StreamEvent(StrEnum):
+    """Event types of POST /investigate/stream (the SSE `event:` field)."""
+
+    STEP = "step"
+    TOOL = "tool"
+    PROGRESS = "progress"
+    LLM = "llm"
+    NOTE = "note"
+    REPORT = "report"
+    ERROR = "error"
+
+
+class EventStatus(StrEnum):
+    STARTED = "started"
+    FINISHED = "finished"
+    FAILED = "failed"
+
+
 class Metric(StrEnum):
     """Metric names accepted by the get_metrics tool."""
 
@@ -64,6 +82,11 @@ MCP_SDK_TRACER_NAME = "mcp-python-sdk"
 TRACEPARENT_PATTERN = r"00-(?P<trace_id>[0-9a-f]{32})-(?P<span_id>[0-9a-f]{16})-[0-9a-f]{2}"
 # Most trace tags a caller may send with /investigate.
 MAX_TRACE_TAGS = 10
+
+# Longest error text sent in a streamed tool event.
+MAX_STREAMED_ERROR_LENGTH = 300
+# Hex characters (the random end) of a LangChain run id used as a streamed call_id.
+CALL_ID_LENGTH = 8
 
 # API status values.
 HEALTH_STATUS_OK = "ok"

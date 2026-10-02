@@ -113,7 +113,8 @@ message.
   dependencies (`InvestigationNodes`). Exceptions: MCP tool factories
   (`build_kubernetes_tools`) use closures because each tool's JSON Schema
   (defaults, allowed namespaces) is built from settings at startup; small handler
-  factories (`main.py::_build_error_handler`) return a configured callback.
+  factories (`mcp_client/progress.py::progress_callback_for`,
+  `tools/helpers.py::query_progress_reporter`) return a configured callback.
 - Keep state shapes in their own module (`agent/workflow/state.py`), next to a constructor for
   the initial state.
 
@@ -309,3 +310,18 @@ message.
   runs can be compared. Use Langfuse's v2/experiments APIs; the legacy trace and
   dataset-run APIs are not available to new Langfuse organizations.
 - Don't put secrets in span inputs, outputs or metadata.
+
+## 20. Live progress and streaming
+
+- Don't build on deprecated MCP features. MCP logging is deprecated (SEP-2577): report
+  server status as progress messages (`ctx.report_progress(..., message=...)`).
+- A sync backend running in a worker thread reports back to the event loop with
+  `anyio.from_thread.run(...)`, through a callback parameter (`on_query_done`); backends
+  never import MCP.
+- Stream events come from LangChain callbacks and MCP progress into one
+  `InvestigationEvents` channel; the graph doesn't know it is being streamed.
+- A streaming endpoint cancels its work when the client disconnects (`finally:` in the
+  generator), and reports errors as an `error` event with the same status codes and
+  messages as the JSON endpoint (`api/errors.py`).
+- Run linters per app, from that app's folder: run from another app, its local packages
+  look like third-party ones and imports get reordered wrongly.

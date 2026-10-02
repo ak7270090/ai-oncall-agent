@@ -11,15 +11,17 @@ from mcp.types import Tool
 from agent.models import Evidence
 from constants import Step
 from mcp_client.langchain_tools import extract_result_text
+from mcp_client.progress import ToolProgressCallback, progress_callback_for
 
 
 class MCPToolbox:
     """Calls MCP tools by name for the fixed investigation steps.
     Failures are returned as evidence, never raised: a failed check is information too."""
 
-    def __init__(self, mcp_client: Client, tools: list[Tool]):
+    def __init__(self, mcp_client: Client, tools: list[Tool], on_progress: ToolProgressCallback | None = None):
         self._client = mcp_client
         self._names = {tool.name for tool in tools}
+        self._on_progress = on_progress
 
     def has(self, name: str) -> bool:
         return name in self._names
@@ -39,7 +41,8 @@ class MCPToolbox:
 
     async def _call_untraced(self, name: str, arguments: dict[str, Any], step: Step) -> Evidence:
         try:
-            result = await self._client.call_tool(name, arguments)
+            result = await self._client.call_tool(
+                name, arguments, progress_callback=progress_callback_for(name, self._on_progress))
         except Exception as error:
             return Evidence(source=name, arguments=arguments, error=f"MCP call failed: {error}", step=step)
         text = extract_result_text(result)

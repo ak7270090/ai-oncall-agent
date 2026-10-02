@@ -1,10 +1,11 @@
 import math
+import time
 from datetime import datetime, timedelta, timezone
 
 import httpx2
 
 from constants import METRIC_VALUE_DECIMALS, SERVICE_OVERVIEW_METRICS, Metric
-from observability.backend import MetricsError
+from observability.backend import MetricsError, QueryDone
 from observability.models import MetricSample, ServiceHealth
 from observability.queries import build_query
 
@@ -55,13 +56,16 @@ class PrometheusBackend:
             for timestamp, value in series[0]["values"]
         ]
 
-    def service_overview(self, namespace: str) -> list[ServiceHealth]:
+    def service_overview(self, namespace: str, on_query_done: QueryDone | None = None) -> list[ServiceHealth]:
         values: dict[str, dict[Metric, float | None]] = {}
         for metric in SERVICE_OVERVIEW_METRICS:
+            started = time.monotonic()
             query = build_query(metric, namespace, None, self._window, group_by=("service",))
             for series in self._get("/api/v1/query", {"query": query}):
                 service = series["metric"].get("service", "unknown")
                 values.setdefault(service, {})[metric] = _parse_value(series["value"][1])
+            if on_query_done:
+                on_query_done(metric, time.monotonic() - started)
         return [
             ServiceHealth(
                 service=service,

@@ -1,26 +1,13 @@
-import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
-from agent import LLMError
 from api import router
+from api.errors import PUBLIC_ERRORS, handle_public_error
 from config import get_settings
-from constants import LLM_FAILURE_MESSAGE
-from mcp_client import MCPUnavailableError
 from tracing import create_tracer
-
-logger = logging.getLogger(__name__)
-
-
-def _build_error_handler(status_code: int, public_message: str | None = None):
-    async def handle(_: Request, error: Exception) -> JSONResponse:
-        logger.error("Request failed: %s", error, exc_info=error)
-        return JSONResponse(status_code=status_code, content={"detail": public_message or str(error)})
-    return handle
 
 
 @asynccontextmanager
@@ -32,8 +19,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(title=get_settings().app_title, lifespan=lifespan)
     app.include_router(router)
-    app.add_exception_handler(MCPUnavailableError, _build_error_handler(status.HTTP_503_SERVICE_UNAVAILABLE))
-    app.add_exception_handler(LLMError, _build_error_handler(status.HTTP_502_BAD_GATEWAY, LLM_FAILURE_MESSAGE))
+    for error_type in PUBLIC_ERRORS:
+        app.add_exception_handler(error_type, handle_public_error)
     return app
 
 

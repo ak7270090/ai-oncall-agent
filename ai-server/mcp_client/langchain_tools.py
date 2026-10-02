@@ -2,6 +2,8 @@ from langchain_core.tools import StructuredTool, ToolException
 from mcp import Client
 from mcp.types import CallToolResult, TextContent, Tool
 
+from mcp_client.progress import ToolProgressCallback, progress_callback_for
+
 
 def extract_result_text(result: CallToolResult) -> str:
     return "\n".join(block.text for block in result.content if isinstance(block, TextContent))
@@ -18,9 +20,10 @@ async def list_all_tools(mcp_client: Client) -> list[Tool]:
             return tools
 
 
-def to_langchain_tool(mcp_client: Client, tool: Tool) -> StructuredTool:
+def to_langchain_tool(mcp_client: Client, tool: Tool, on_progress: ToolProgressCallback | None = None) -> StructuredTool:
     async def call_mcp_tool(**arguments) -> str:
-        result = await mcp_client.call_tool(tool.name, arguments)
+        result = await mcp_client.call_tool(
+            tool.name, arguments, progress_callback=progress_callback_for(tool.name, on_progress))
         if result.is_error:
             raise ToolException(extract_result_text(result))
         return extract_result_text(result)

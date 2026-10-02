@@ -161,3 +161,15 @@ async def test_metric_history_is_summarised_for_the_model(client):
 async def test_metric_summary_is_part_of_the_output_schema(client):
     tools = {t.name: t for t in (await client.list_tools()).tools}
     assert {"latest", "min", "max"} <= tools["get_metrics"].output_schema["properties"].keys()
+
+
+async def test_service_overview_reports_progress_per_query(client):
+    updates = []
+
+    async def on_progress(progress, total, message):
+        updates.append((progress, total, message))
+
+    result = await client.call_tool("get_service_overview", {}, progress_callback=on_progress)
+    assert not result.is_error
+    assert [(progress, total) for progress, total, _ in updates] == [(1, 3), (2, 3), (3, 3)]
+    assert updates[0][2].startswith("request_rate queried in")

@@ -1,7 +1,9 @@
 """Running an investigation end to end, and re-running only its reasoning (for evals)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langgraph.graph.state import CompiledStateGraph
@@ -37,11 +39,14 @@ def _still_wanted_tools(messages: list) -> bool:
 async def run_investigation(
     graph: CompiledStateGraph, question: str, max_follow_up_rounds: int,
     tracer: InvestigationTracer = DISABLED_TRACER, labels: TraceLabels = NO_LABELS,
+    callbacks: Sequence[BaseCallbackHandler] = (),
 ) -> InvestigationResult:
+    """`callbacks` receive every LangChain event of the run besides tracing (e.g. live streaming)."""
     recursion_limit = GRAPH_STEPS_WITHOUT_FOLLOW_UPS + GRAPH_STEPS_PER_FOLLOW_UP * max_follow_up_rounds + 1
     with tracer.trace_investigation(question, labels) as trace:
         final = await graph.ainvoke(
-            new_investigation_state(question), {"recursion_limit": recursion_limit, "callbacks": trace.callbacks})
+            new_investigation_state(question),
+            {"recursion_limit": recursion_limit, "callbacks": [*trace.callbacks, *callbacks]})
         result = InvestigationResult(
             report=final["report"],
             answer=final["report"].to_markdown(),

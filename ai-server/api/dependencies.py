@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated
 
@@ -33,3 +34,22 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 ChatModelDep = Annotated[BaseChatModel, Depends(get_chat_model)]
 MCPConnectorDep = Annotated[MCPConnector, Depends(get_mcp_connector)]
 TracerDep = Annotated[InvestigationTracer, Depends(get_tracer)]
+
+
+@dataclass(frozen=True)
+class InvestigationDependencies:
+    """Everything an investigation endpoint needs, resolved once per request."""
+
+    settings: Settings
+    chat_model: BaseChatModel
+    open_mcp: MCPConnector
+    tracer: InvestigationTracer
+
+
+def get_investigation_dependencies(
+    settings: SettingsDep, chat_model: ChatModelDep, open_mcp: MCPConnectorDep, tracer: TracerDep
+) -> InvestigationDependencies:
+    return InvestigationDependencies(settings, chat_model, open_mcp, tracer)
+
+
+InvestigationDependenciesDep = Annotated[InvestigationDependencies, Depends(get_investigation_dependencies)]

@@ -80,3 +80,9 @@ def test_queries_use_expected_promql(metric, expected_fragment):
 
 def test_grouped_latency_keeps_service_and_le():
     assert "sum by (service, le)" in build_query("latency_p99_ms", "shop", None, "1m", group_by=("service",))
+
+
+def test_service_overview_reports_each_query():
+    finished = []
+    backend_answering(lambda r: success([])).service_overview("shop", lambda metric, seconds: finished.append(metric))
+    assert finished == ["request_rate", "error_rate", "latency_p99_ms"]

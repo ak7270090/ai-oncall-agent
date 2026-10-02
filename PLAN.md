@@ -80,7 +80,7 @@ Sizes in the roadmap are rough: **S** about a day, **M** two to three days, **L*
 | 12 | Observability | Eval/replay runs as compared experiments | – | – | Done (no LLM-as-judge) |
 | 13 | Advanced MCP | Resources: runbooks, topology, live specs | M | – | Next |
 | 14 | Advanced MCP | Prompts: server-provided prompt templates | S | 13 | Not started |
-| 15 | Advanced MCP | Progress, logging, cancellation, live streaming | M | – | Not started |
+| 15 | Advanced MCP | Progress, logging, cancellation, live streaming | M | – | Done (MCP logging deprecated, not used) |
 | 16 | Advanced MCP | Completions and tool annotations | S | – | Not started |
 | 17 | Advanced MCP | Sampling: the server borrows the client's LLM | M | 15 | Not started |
 | 18 | Write actions | Write tools + human approval through elicitation | L | 16 | Not started |
@@ -228,7 +228,14 @@ on payment-service while an incident is injected.
 **Out of scope:** Langfuse prompt management (versioned prompts fetched at runtime) —
 a possible follow-up for the graph's own prompts.
 
-### Phase 15 — Progress, logging, cancellation and live streaming
+### Phase 15 — Progress, logging, cancellation and live streaming (done)
+
+Built: `POST /investigate/stream` (SSE: step, tool, progress, llm, note, report, error),
+`ai-server/streaming/`, MCP progress in `get_service_overview`, cancellation on
+disconnect. Changed from the plan: MCP logging turned out deprecated (SEP-2577), so
+server status travels in progress messages and the AI server's notes stream as
+`note` events; resource subscriptions wait for Phase 13.
+
 
 **Why:** an investigation takes 10–20 seconds and the caller sees nothing until the
 end. On-call engineers want to see what's happening, and stop it if it's wrong.

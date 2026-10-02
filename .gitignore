@@ -10,3 +10,4 @@ kubernetes/base/secrets/*.env
 mcp-server/.kube/
 evals/results/
 docs/WALKTHROUGH.md
+docs/LINKEDIN_POSTS.md

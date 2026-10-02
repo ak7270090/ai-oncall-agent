@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from typing import Annotated
 
+import anyio
+from mcp.server.mcpserver import Context
 from pydantic import Field
 
 from config import Settings
@@ -9,26 +11,27 @@ from constants import (
     MAX_HISTORY_MINUTES,
     METRIC_UNITS,
     NAME_PATTERN,
+    SERVICE_OVERVIEW_METRICS,
     MetricName,
 )
 from observability import MetricsBackend
 from observability.models import MetricSeries, ServiceOverview
-from tools.helpers import namespace_guard
+from tools.helpers import namespace_guard, query_progress_reporter
 
 
 def build_observability_tools(backend: MetricsBackend, settings: Settings) -> list[Callable]:
     Namespace, require_allowed = namespace_guard(settings)
     ServiceName = Annotated[str, Field(pattern=NAME_PATTERN, description="Service name, e.g. payment-service")]
 
-    def get_service_overview(namespace: Namespace = settings.default_namespace) -> ServiceOverview:
+    async def get_service_overview(ctx: Context, namespace: Namespace = settings.default_namespace) -> ServiceOverview:
         """Current request rate, error rate (share of 5xx) and p99 latency for every
         service in the namespace. Start here to see which service is unhealthy.
         Only services with running, scraped pods appear: a service missing here may have
         no pods at all (check list_deployments / list_pods)."""
         require_allowed(namespace)
-        return ServiceOverview(
-            namespace=namespace, window=settings.metrics_rate_window, services=backend.service_overview(namespace)
-        )
+        on_query_done = query_progress_reporter(ctx, len(SERVICE_OVERVIEW_METRICS))
+        services = await anyio.to_thread.run_sync(backend.service_overview, namespace, on_query_done)
+        return ServiceOverview(namespace=namespace, window=settings.metrics_rate_window, services=services)
 
     def get_metrics(
         service: ServiceName,

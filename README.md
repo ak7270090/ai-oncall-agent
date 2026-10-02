@@ -39,6 +39,7 @@ ai-oncall-agent/
 │   │   └── llm/               chat_model.py (provider-agnostic), prompts.py
 │   ├── mcp_client/            connection.py, langchain_tools.py (MCP → LangChain adapter)
 │   ├── tracing/               langfuse_tracer.py (one Langfuse trace per investigation)
+│   ├── streaming/             investigation_events.py (live events for /investigate/stream)
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
@@ -131,9 +132,11 @@ make run-ai-server    # terminal 2: http://127.0.0.1:8000 (Swagger UI at /docs)
 | `GET /ready` | Confirms the MCP server is reachable (runs `tools/list`) |
 | `GET /tools` | Lists the tools the MCP server advertises |
 | `POST /investigate` | `{"question": "..."}` → structured incident report, Markdown version, every check that ran, graph steps |
+| `POST /investigate/stream` | Same investigation, streamed live as Server-Sent Events (see "Live progress") |
 
 Errors: MCP server unreachable → `503`; LLM provider failure → `502` (details go
-to the server log only).
+to the server log only). The table is in `ai-server/api/errors.py`, shared by both
+investigate endpoints.
 
 To call MCP tools by hand, open the [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 with `npx @modelcontextprotocol/inspector` and connect with Streamable HTTP to
@@ -337,6 +340,54 @@ one full `make eval`.
 symptoms show up, and clear, within seconds rather than minutes. The eval waits
 20s after a symptom appears (like an alert's `for:`) before asking the agent.
 
+## Live progress (Phase 15)
+
+`POST /investigate/stream` runs the same investigation as `/investigate` and sends
+what happens as it happens, as Server-Sent Events (SSE): one HTTP response that stays
+open and delivers one small event at a time.
+
+```bash
+curl -N -X POST http://127.0.0.1:8000/investigate/stream \
+     -H "content-type: application/json" -d '{"question": "Checkout is failing"}'
+```
+
+```text
+event: step      data: {"step": "collect_namespace_overview", "status": "started"}
+event: tool      data: {"tool": "get_service_overview", "call_id": "a1f0c2d4", "status": "started", "step": "collect_namespace_overview", "arguments": {"namespace": "shop"}}
+event: progress  data: {"tool": "get_service_overview", "progress": 2.0, "total": 3.0, "message": "error_rate queried in 0.4s"}
+event: tool      data: {"tool": "get_service_overview", "call_id": "a1f0c2d4", "status": "finished", "step": "collect_namespace_overview", "seconds": 0.9}
+event: note      data: {"note": "trace_failing_dependencies: logs point at payment-service"}
+event: llm       data: {"call_id": "77be01c9", "step": "find_root_cause", "status": "finished", "seconds": 3.8, "input_tokens": 5919, "output_tokens": 457}
+event: report    data: {...the same InvestigateResponse as POST /investigate...}
+```
+
+| Event | When |
+| --- | --- |
+| `step` | a graph step starts / finishes (with seconds) |
+| `tool` | an MCP tool call starts / finishes / fails; `call_id` pairs them (calls run in parallel) |
+| `progress` | the MCP server reports progress inside one tool call |
+| `llm` | an LLM call starts / finishes (seconds, tokens) |
+| `note` | a step explains a decision (skipped tools, hidden stale events, followed dependencies) |
+| `report` / `error` | the end: the full response, or `{"status_code", "detail"}` |
+
+How it works, in two hops:
+
+1. **MCP server → AI server (MCP progress notifications).** `get_service_overview`
+   runs three PromQL queries; after each one the backend calls back and the tool sends
+   `ctx.report_progress(done, 3, "error_rate queried in 0.4s")`
+   (`mcp-server/tools/helpers.py::query_progress_reporter`). The AI server passes a
+   `progress_callback` with every `call_tool`, which is what asks the server for progress.
+2. **AI server → user (SSE).** `ai-server/streaming/` collects three sources into one
+   queue: LangChain callbacks (steps, tool calls, LLM calls, notes), MCP progress, and
+   the final report or error. The route yields them with FastAPI's `EventSourceResponse`.
+
+Closing the connection (Ctrl+C, a closed tab) cancels the investigation: the graph
+stops and its pending MCP and LLM calls are cancelled.
+
+MCP *logging* (`notifications/message`) is deprecated as of protocol 2026-07-28
+(SEP-2577), so the server doesn't use it: progress messages carry the server's status
+text, and `note` events carry the AI server's explanations.
+
 ## Comparing runs in Langfuse (Phase 12)
 
 With Langfuse keys in `ai-server/.env`, every `make eval` and `make replay` run is
@@ -481,4 +532,5 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Discovery / invocation | `tools/list` in `mcp_client/langchain_tools.py`, `tools/call` through each LangChain tool |
 | Tool errors | Schema violations and `ToolError` come back as `is_error=True`. The SDK hides the text of unexpected exceptions. |
 | Transport | Streamable HTTP at `/mcp`. stdio is available with `MCP_TRANSPORT=stdio`. |
+| Progress | `ctx.report_progress` in `get_service_overview`; the client opts in per call with `progress_callback` (`mcp_client/progress.py`). |
 | Host / client | The AI server is the host. `mcp.Client` is the client. |
