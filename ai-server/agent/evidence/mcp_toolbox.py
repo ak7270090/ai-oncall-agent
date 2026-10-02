@@ -1,13 +1,16 @@
 import json
 from typing import Any
 
+from langchain_core.callbacks import AsyncCallbackManager
 from langchain_core.messages import BaseMessage, ToolMessage
+from langchain_core.runnables import ensure_config
+from langchain_core.tools import ToolException
 from mcp import Client
 from mcp.types import Tool
-from mcp_client.langchain_tools import extract_result_text
 
 from agent.models import Evidence
 from constants import Step
+from mcp_client.langchain_tools import extract_result_text
 
 
 class MCPToolbox:
@@ -22,6 +25,19 @@ class MCPToolbox:
         return name in self._names
 
     async def call(self, name: str, arguments: dict[str, Any], step: Step) -> Evidence:
+        # Report the call as a LangChain tool run of the current graph step, so tracing
+        # callbacks (Langfuse) show it under that step, like the tools the LLM requests.
+        callbacks = AsyncCallbackManager.configure(
+            inheritable_callbacks=ensure_config().get("callbacks"), local_metadata={"step": step})
+        run = await callbacks.on_tool_start({"name": name}, json.dumps(arguments), inputs=arguments, name=name)
+        evidence = await self._call_untraced(name, arguments, step)
+        if evidence.error:
+            await run.on_tool_error(ToolException(evidence.error))
+        else:
+            await run.on_tool_end(evidence.result)
+        return evidence
+
+    async def _call_untraced(self, name: str, arguments: dict[str, Any], step: Step) -> Evidence:
         try:
             result = await self._client.call_tool(name, arguments)
         except Exception as error:

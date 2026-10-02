@@ -56,6 +56,11 @@ POD_OBJECT_PREFIX = "Pod/"
 PROBE_FAILURE_EVENT_REASON = "Unhealthy"
 RUNNING_POD_STATUS = "Running"
 
+# Name of the Langfuse trace recorded for each investigation.
+INVESTIGATION_TRACE_NAME = "investigate"
+# OpenTelemetry tracer name the mcp SDK uses for its own spans (not exported).
+MCP_SDK_TRACER_NAME = "mcp-python-sdk"
+
 # API status values.
 HEALTH_STATUS_OK = "ok"
 READY_STATUS = "ready"

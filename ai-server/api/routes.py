@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from agent import MCPToolbox, build_investigation_graph, run_investigation
-from api.dependencies import ChatModelDep, MCPConnectorDep, SettingsDep
+from api.dependencies import ChatModelDep, MCPConnectorDep, SettingsDep, TracerDep
 from api.schemas import (
     EvidenceResponse,
     InvestigateRequest,
@@ -44,6 +44,7 @@ async def investigate(
     settings: SettingsDep,
     chat_model: ChatModelDep,
     open_mcp: MCPConnectorDep,
+    tracer: TracerDep,
 ) -> InvestigateResponse:
     async with open_mcp() as mcp_client:
         tools = await list_all_tools(mcp_client)
@@ -53,7 +54,7 @@ async def investigate(
             [to_langchain_tool(mcp_client, tool) for tool in tools],
             settings,
         )
-        result = await run_investigation(graph, request.question, settings.max_follow_up_rounds)
+        result = await run_investigation(graph, request.question, settings.max_follow_up_rounds, tracer)
     return InvestigateResponse(
         answer=result.answer,
         report=result.report,
@@ -68,4 +69,6 @@ async def investigate(
         steps=result.steps,
         llm_calls=result.llm_calls,
         follow_up_limit_reached=result.follow_up_limit_reached,
+        trace_id=result.trace_id,
+        trace_url=result.trace_url,
     )

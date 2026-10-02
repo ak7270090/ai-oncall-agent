@@ -11,6 +11,7 @@ from agent.llm.prompts import report_messages, root_cause_messages
 from agent.models import Evidence, IncidentReport, IncidentScope
 from agent.workflow.state import new_investigation_state
 from constants import GRAPH_STEPS_PER_FOLLOW_UP, GRAPH_STEPS_WITHOUT_FOLLOW_UPS
+from tracing import DISABLED_TRACER, InvestigationTracer
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class InvestigationResult:
     steps: list[str]
     llm_calls: int
     follow_up_limit_reached: bool
+    trace_id: str | None = None
+    trace_url: str | None = None
 
 
 def _still_wanted_tools(messages: list) -> bool:
@@ -31,20 +34,37 @@ def _still_wanted_tools(messages: list) -> bool:
     return bool(last_ai and last_ai.tool_calls)
 
 
-async def run_investigation(graph: CompiledStateGraph, question: str, max_follow_up_rounds: int) -> InvestigationResult:
+async def run_investigation(
+    graph: CompiledStateGraph, question: str, max_follow_up_rounds: int,
+    tracer: InvestigationTracer = DISABLED_TRACER,
+) -> InvestigationResult:
     recursion_limit = GRAPH_STEPS_WITHOUT_FOLLOW_UPS + GRAPH_STEPS_PER_FOLLOW_UP * max_follow_up_rounds + 1
-    final = await graph.ainvoke(new_investigation_state(question), {"recursion_limit": recursion_limit})
-    return InvestigationResult(
-        report=final["report"],
-        answer=final["report"].to_markdown(),
-        scope=final["scope"],
-        namespace=final["namespace"],
-        evidence=final["evidence"],
-        notes=final["notes"],
-        steps=final["steps"],
-        llm_calls=final["llm_calls"],
-        follow_up_limit_reached=_still_wanted_tools(final["messages"]),
-    )
+    with tracer.trace_investigation(question) as trace:
+        final = await graph.ainvoke(
+            new_investigation_state(question), {"recursion_limit": recursion_limit, "callbacks": trace.callbacks})
+        result = InvestigationResult(
+            report=final["report"],
+            answer=final["report"].to_markdown(),
+            scope=final["scope"],
+            namespace=final["namespace"],
+            evidence=final["evidence"],
+            notes=final["notes"],
+            steps=final["steps"],
+            llm_calls=final["llm_calls"],
+            follow_up_limit_reached=_still_wanted_tools(final["messages"]),
+            trace_id=trace.trace_id,
+            trace_url=trace.trace_url,
+        )
+        trace.record_outcome(result.answer, {
+            "namespace": result.namespace,
+            "cause_category": result.report.cause_category,
+            "root_cause_service": result.report.root_cause_service,
+            "confidence": result.report.confidence,
+            "llm_calls": result.llm_calls,
+            "tool_calls": len(result.evidence),
+            "follow_up_limit_reached": result.follow_up_limit_reached,
+        })
+    return result
 
 
 async def reanalyze_evidence(

@@ -38,6 +38,7 @@ ai-oncall-agent/
 │   │   ├── evidence/          collection_steps.py (deterministic checks), helpers.py (rules), mcp_toolbox.py
 │   │   └── llm/               chat_model.py (provider-agnostic), prompts.py
 │   ├── mcp_client/            connection.py, langchain_tools.py (MCP → LangChain adapter)
+│   ├── tracing/               langfuse_tracer.py (one Langfuse trace per investigation)
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
@@ -334,6 +335,50 @@ one full `make eval`.
 **Eval speed.** Prometheus scrapes every 5s and rates use a 30s window, so
 symptoms show up, and clear, within seconds rather than minutes. The eval waits
 20s after a symptom appears (like an alert's `for:`) before asking the agent.
+
+## Tracing with Langfuse (Phase 11)
+
+Every investigation can be recorded as one **trace** in [Langfuse](https://langfuse.com):
+a timeline of each graph step, every LLM call (prompt, answer, model, tokens, cost)
+and every MCP tool call with its arguments and result.
+
+```text
+investigate                         (agent: question in, report out, outcome metadata)
+└─ LangGraph
+   ├─ extract_incident_scope   → ChatOpenAI (generation: tokens, cost)
+   ├─ collect_namespace_overview → list_pods, list_events, … (tool spans, in parallel)
+   ├─ inspect_flagged_problems   → get_pod_logs, get_metrics, …
+   ├─ trace_failing_dependencies → list_pods, …
+   ├─ find_root_cause          → ChatOpenAI  ⇄  run_requested_tools → get_pod_status, …
+   └─ write_report             → ChatOpenAI
+```
+
+Setup: create a Langfuse project (cloud or self-hosted), then **Settings → API Keys**,
+and put the keys in `ai-server/.env`:
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or https://us.cloud.langfuse.com, or your own
+```
+
+Without keys tracing is off. `/investigate` returns `trace_id` and `trace_url`
+(a direct link to the trace).
+
+How it works (`ai-server/tracing/langfuse_tracer.py`):
+
+- `run_investigation` opens a root span and passes Langfuse's LangChain
+  `CallbackHandler` to the graph run. LangChain reports every step, LLM call and
+  LLM-requested tool to it; token usage comes from LangChain, so this works with any
+  provider, and Langfuse prices known models itself (add others under **Settings → Models**).
+- The fixed collection steps call MCP tools directly, so `MCPToolbox.call` reports
+  each call as a LangChain tool run; it shows up under its step like any other tool.
+- The MCP SDK's own OpenTelemetry spans are not exported (they would duplicate every
+  tool span).
+- Tracing never fails an investigation: if Langfuse is unreachable, only `trace_url`
+  is missing.
+- Traces contain prompts, logs, events and metrics the agent read. With Langfuse
+  Cloud they're stored there; secrets in `.env` are never sent.
 
 ## Test
 

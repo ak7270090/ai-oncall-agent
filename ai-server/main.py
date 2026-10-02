@@ -1,14 +1,17 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import uvicorn
-from agent import LLMError
-from api import router
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
-from mcp_client import MCPUnavailableError
 
+from agent import LLMError
+from api import router
 from config import get_settings
 from constants import LLM_FAILURE_MESSAGE
+from mcp_client import MCPUnavailableError
+from tracing import create_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,14 @@ def _build_error_handler(status_code: int, public_message: str | None = None):
     return handle
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    yield
+    create_tracer(get_settings()).shutdown()  # send spans still buffered
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title=get_settings().app_title)
+    app = FastAPI(title=get_settings().app_title, lifespan=lifespan)
     app.include_router(router)
     app.add_exception_handler(MCPUnavailableError, _build_error_handler(status.HTTP_503_SERVICE_UNAVAILABLE))
     app.add_exception_handler(LLMError, _build_error_handler(status.HTTP_502_BAD_GATEWAY, LLM_FAILURE_MESSAGE))

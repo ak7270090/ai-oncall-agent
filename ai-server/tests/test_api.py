@@ -73,6 +73,7 @@ def test_investigate_returns_structured_report_and_evidence(client):
     assert {"step", "source", "arguments"} <= body["evidence"][0].keys()
     assert body["evidence"][0]["result"] is None
     assert body["scope"]["symptom"] and body["namespace"] == "shop"
+    assert body["trace_id"] is None and body["trace_url"] is None  # no Langfuse keys in tests
 
 
 def test_investigate_can_include_raw_evidence(client):

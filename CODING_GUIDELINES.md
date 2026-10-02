@@ -290,3 +290,16 @@ message.
   way (`slow upstream call: … took 3.02s`).
 - Keep probe and scrape requests (`/health`, `/metrics`) out of access logs. At
   a 5s scrape interval they otherwise push real traffic out of any log tail.
+
+## 19. Tracing the AI server
+
+- Only `ai-server/tracing/` imports Langfuse. Everything else reports through LangChain
+  callbacks (graph runs, LLM calls, tools), so the tracing backend can change without
+  touching the agent.
+- Work that doesn't go through LangChain (such as `MCPToolbox.call`) reports itself as a
+  LangChain run with the callbacks of the current config (`ensure_config()`), so it
+  nests under its graph step.
+- Tracing must never fail or slow down an investigation: no keys means a no-op tracer,
+  and a call to the tracing backend that can fail is caught and logged.
+- Tests never send traces: they run without keys or use an in-memory span exporter.
+- Don't put secrets in span inputs, outputs or metadata.

@@ -38,9 +38,9 @@ User ──► ai-server (FastAPI + LangGraph + LLM + MCP client)
 
 | Phase | Theme | What you build | Status |
 | --- | --- | --- | --- |
-| 10 | LLM observability | Metrics for the AI server and MCP server | Next |
-| 11 | LLM observability | Tracing of every investigation (LLM calls, tool calls, tokens, cost) | Not started |
-| 12 | LLM observability | Quality tracking: eval results and traces side by side | Not started |
+| 10 | LLM observability | Metrics for the AI server and MCP server | Skipped (Langfuse dashboards cover it) |
+| 11 | LLM observability | Tracing of every investigation (LLM calls, tool calls, tokens, cost) | Done (Langfuse Cloud) |
+| 12 | LLM observability | Quality tracking: eval results and traces side by side | Next |
 | 13 | Advanced MCP | Resources | Not started |
 | 14 | Advanced MCP | Prompts | Not started |
 | 15 | Advanced MCP | Progress, logging and cancellation | Not started |
@@ -66,7 +66,11 @@ it. These phases make the agent as observable as the services it investigates.
 Everything stays provider-agnostic: data comes from LangChain/LangGraph callbacks
 and our own code, never from a provider SDK.
 
-### Phase 10 — Metrics for the AI server and MCP server
+### Phase 10 — Metrics for the AI server and MCP server (skipped)
+
+Skipped: Langfuse's dashboards already show tokens, cost and latency per step
+and model. Come back to it when alerting on the agent (Prometheus alerts) is needed.
+
 
 **What:** numbers over time (counts, durations, sizes) that Prometheus scrapes,
 the same way it already scrapes the sample services.
@@ -90,7 +94,12 @@ the same way it already scrapes the sample services.
 **Done when:** after one `/investigate`, Prometheus shows its token count, step
 durations and tool calls.
 
-### Phase 11 — Tracing every investigation
+### Phase 11 — Tracing every investigation (done)
+
+Built: `ai-server/tracing/langfuse_tracer.py`, Langfuse Cloud, setup in the README
+("Tracing with Langfuse"). Not done yet: joining mcp-server's own spans to the trace
+(needs OpenTelemetry in mcp-server); revisit with Phase 15 or 22.
+
 
 **What:** a *trace* is the timeline of one request: every step, LLM call and tool
 call as a nested span, with inputs, outputs, timings and token counts. Metrics say
@@ -246,7 +255,7 @@ refuse.
   `find_root_cause`.
 - The AI server handles sampling requests with its existing provider-agnostic chat
   model, with a token limit and a log of every request.
-- Compare tokens and pass rate with and without summaries (Phase 10–12 data).
+- Compare tokens and pass rate with and without summaries (Phase 11–12 data).
 
 **Done when:** summarized logs reduce tokens per investigation and the eval still
 passes.
@@ -353,8 +362,8 @@ item.
 Give Claude Code **one phase at a time**, so the codebase stays understandable and
 you learn from each step. Example:
 
-> "Implement Phase 10 only. Add Prometheus metrics to the AI server and MCP server
-> as described in PLAN.md. Don't add tracing (Phase 11). Follow
+> "Implement Phase 12 only. Link eval and replay runs to their Langfuse traces
+> as described in PLAN.md. Don't start Phase 13. Follow
 > CODING_GUIDELINES.md, run all tests, and update README."
 
 Review each phase's output before moving to the next. See

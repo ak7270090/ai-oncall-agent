@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     log_lines: int = 50
     max_follow_up_rounds: int = 2
 
+    # Tracing in Langfuse; off while the keys are empty.
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+    langfuse_environment: str = "local"
+
 
 @lru_cache
 def get_settings() -> Settings:

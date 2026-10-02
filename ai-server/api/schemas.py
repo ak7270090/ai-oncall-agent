@@ -36,6 +36,8 @@ class InvestigateResponse(BaseModel):
     steps: list[str]
     llm_calls: int
     follow_up_limit_reached: bool
+    trace_id: str | None = Field(default=None, description="Langfuse trace id; null when tracing is off")
+    trace_url: str | None = Field(default=None, description="Link to this investigation in Langfuse")
 
 
 class ToolDescription(BaseModel):
