@@ -4,6 +4,11 @@ An AI on-call assistant that investigates incidents through the Model Context
 Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–9 are done.**
 Code rules are in [CODING_GUIDELINES.md](./CODING_GUIDELINES.md).
 
+**New here?** Start with the beginner's guide,
+[docs/WALKTHROUGH.md](./docs/WALKTHROUGH.md). It covers the repo structure, the
+code piece by piece, how the LLM gets its context and reasons, and every incident
+scenario, with diagrams.
+
 ```text
  User ──HTTP──► AI server :8000 ──MCP / Streamable HTTP──► MCP server :9000 ──read-only──► kind cluster (shop)
                 FastAPI                                     Kubernetes: list_pods,           │
