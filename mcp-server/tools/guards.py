@@ -6,9 +6,6 @@ from pydantic import Field
 
 from config import Settings
 
-# Kubernetes object/label value syntax; also keeps values safe to embed in PromQL.
-NAME_PATTERN = r"^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$"
-
 
 def namespace_guard(settings: Settings) -> tuple[Any, Callable[[str], None]]:
     """Annotated type for a `namespace` tool argument plus the allowlist check."""

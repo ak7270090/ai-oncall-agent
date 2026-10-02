@@ -33,7 +33,8 @@ ai-oncall-agent/
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
 │   ├── api/                   routes, schemas, dependencies
-│   ├── agent/                 graph.py (investigation flow), evidence.py (deterministic checks),
+│   ├── agent/                 graph.py (wiring), nodes.py (the steps), state.py, evidence_collection.py
+│   │                          (deterministic checks), signals.py (problem-detection rules),
 │   │                          toolbox.py, models.py, prompts.py, report.py, chat_model.py
 │   ├── mcp_client/            connection.py, tools.py (MCP → LangChain adapter)
 │   ├── config/settings.py
@@ -355,18 +356,26 @@ understands, reasons and writes.** The same essential checks happen every
 time, and a typical investigation costs 3 LLM calls.
 
 ```text
-START → understand → sweep → focus → follow_dependencies → correlate ⇄ follow_up (≤ MAX_FOLLOW_UP_ROUNDS)
-                                                                └──→ report → END
+START → extract_incident_scope → collect_namespace_overview → inspect_flagged_problems
+      → trace_failing_dependencies → find_root_cause ⇄ run_requested_tools (≤ MAX_FOLLOW_UP_ROUNDS)
+                                                   └──→ write_report → END
 ```
+
+Code layout (`ai-server/agent/`): `graph.py` only wires the flow; each step is a
+method of `InvestigationNodes` in `nodes.py`; the state passed between steps is
+`InvestigationState` in `state.py`; the collection steps are in
+`evidence_collection.py` and the rules they use (unhealthy pods, failing or slow
+services…) in `signals.py`. Step names, MCP tool names and other fixed values are
+in `ai-server/constants.py`.
 
 | Step | Who | What |
 | --- | --- | --- |
-| `understand` | LLM (structured output) | `IncidentScope`: namespace, suspected services, symptom, time window |
-| `sweep` | Code, in parallel | `get_service_overview`, `list_pods`, `list_events` (warnings), `list_deployments` |
-| `focus` | Code | Unhealthy pods → status and logs (`previous=true` if the pod restarted). Services above `ERROR_RATE_THRESHOLD` → error-rate history, plus logs from one pod even if it looks healthy. Deployments not fully ready or scaled to 0 → rollout history |
-| `follow_dependencies` | Code | Error log lines naming an upstream (`upstream unavailable: POST http://payment-service/…`) → check that service's pods and deployment |
-| `correlate` | LLM + tools | Reasons over all the evidence (JSON). May request up to `MAX_FOLLOW_UP_ROUNDS` rounds of extra tool calls |
-| `report` | LLM (structured output) | `IncidentReport`: incident, impact, cited evidence, likely cause, confidence, recommended actions, timeline |
+| `extract_incident_scope` | LLM (structured output) | `IncidentScope`: namespace, suspected services, symptom, time window |
+| `collect_namespace_overview` | Code, in parallel | `get_service_overview`, `list_pods`, `list_events` (warnings), `list_deployments` |
+| `inspect_flagged_problems` | Code, in parallel | Unhealthy pods → status and logs (`previous=true` if the pod restarted). Services above `ERROR_RATE_THRESHOLD` → error-rate history, plus logs from one pod even if it looks healthy. Deployments not fully ready or scaled to 0 → rollout history |
+| `trace_failing_dependencies` | Code, in parallel | Error or slow-call log lines naming another service (`upstream unavailable: POST http://payment-service/…`) → that service's pods, deployment, error rate and latency |
+| `find_root_cause` ⇄ `run_requested_tools` | LLM + tools | Reasons over all the evidence (JSON). May request up to `MAX_FOLLOW_UP_ROUNDS` rounds of extra tool calls |
+| `write_report` | LLM (structured output) | `IncidentReport`: incident, impact, cited evidence, likely cause, confidence, recommended actions, timeline |
 
 If an MCP tool is missing (e.g. no metrics), its step is skipped and noted.
 A tool that fails becomes evidence (with its error) rather than stopping the
@@ -380,9 +389,10 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
   "answer": "**Incident:** ... (the report as Markdown)",
   "report": {"incident": "...", "impact": "...", "evidence": [{"source": "get_pod_logs", "finding": "..."}],
              "likely_cause": "...", "confidence": "high", "recommended_actions": ["..."], "timeline": ["..."]},
-  "evidence": [{"step": "focus", "source": "get_pod_logs", "arguments": {"pod": "..."}, "error": null}],
-  "notes": ["follow_dependencies: logs point at payment-service"],
-  "steps": ["understand", "sweep", "focus", "follow_dependencies", "correlate", "report"],
+  "evidence": [{"step": "inspect_flagged_problems", "source": "get_pod_logs", "arguments": {"pod": "..."}, "error": null}],
+  "notes": ["trace_failing_dependencies: logs point at payment-service"],
+  "steps": ["extract_incident_scope", "collect_namespace_overview", "inspect_flagged_problems",
+            "trace_failing_dependencies", "find_root_cause", "write_report"],
   "llm_calls": 3,
   "follow_up_limit_reached": false
 }

@@ -2,8 +2,8 @@ from typing import Protocol
 
 from mcp.server.mcpserver.exceptions import ToolError
 
+from constants import Metric
 from observability.models import MetricSample, ServiceHealth
-from observability.queries import Metric
 
 
 class MetricsError(ToolError):

@@ -19,9 +19,7 @@ from cluster.models import (
     PodDetail,
     ReplicaSetRevision,
 )
-
-REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
-WARNING_EVENT = "Warning"
+from constants import REVISION_ANNOTATION, WARNING_EVENT_TYPE
 
 
 @contextmanager
@@ -212,7 +210,7 @@ class KubernetesBackend:
         )
 
     def list_events(self, namespace: str, warnings_only: bool, limit: int) -> list[ClusterEvent]:
-        selector = f"type={WARNING_EVENT}" if warnings_only else None
+        selector = f"type={WARNING_EVENT_TYPE}" if warnings_only else None
         with translate_errors("list events", namespace):
             events = self._core.list_namespaced_event(namespace, field_selector=selector, _request_timeout=self._timeout)
         return sorted((_event(e) for e in events.items), key=lambda e: _newest_first(e.last_seen))[:limit]

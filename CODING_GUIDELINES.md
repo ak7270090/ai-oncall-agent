@@ -14,6 +14,11 @@ message.
 - Automation values are variables at the top of the `Makefile` (`?=`, so
   `make <target> VAR=value` can override them), not literals inside recipes.
 - Document every setting in that app's `.env.example`.
+- Fixed values that are not settings (enum-like names, protocol and vocabulary strings,
+  tool argument limits, fixed user-facing messages) live in the app's `constants.py`,
+  never as module-level literals scattered across files. Use `StrEnum` for named sets
+  (`Step`, `McpTool`, `Metric`). Messages that embed variables stay as f-strings where
+  they're raised.
 - Values that define an API contract (such as a tool's maximum `lines`) are named
   module-level constants (`MAX_LOG_LINES`). Never leave an unexplained literal
   in logic.
@@ -70,6 +75,17 @@ message.
   `completed`.
 - Name files after their contents: `connection.py`, `investigation.py`, not
   `misc.py`.
+- Name functions after their purpose in the domain, not a metaphor:
+  `collect_namespace_overview`, not `sweep`. A reader should know what a function
+  does without opening it.
+- Group small pure functions by what they're about (`agent/signals.py`: problem
+  signals in evidence), never in a catch-all `helpers.py`/`utils.py`.
+- Avoid functions defined inside functions. Prefer a class whose methods share
+  dependencies (`InvestigationNodes`). Exception: MCP tool factories
+  (`build_kubernetes_tools`) use closures because each tool's JSON Schema
+  (defaults, allowed namespaces) is built from settings at startup.
+- Keep state shapes in their own module (`agent/state.py`), next to a constructor for
+  the initial state.
 
 ## 7. Comments and docstrings
 
@@ -189,7 +205,7 @@ message.
 ## 16. Investigation graph (AI server)
 
 - Evidence gathering that should always happen goes in deterministic graph
-  steps (`agent/evidence.py`), not in the prompt. The LLM understands the
+  steps (`agent/evidence_collection.py`), not in the prompt. The LLM understands the
   question, reasons over evidence and writes the report. It doesn't decide the
   basic checks.
 - LLM outputs that code consumes are typed with `with_structured_output(Model)`
@@ -201,7 +217,8 @@ message.
 - A missing MCP tool degrades the investigation (step skipped and noted); it
   never breaks it.
 - The graph depends on MCP tool names and result fields. Change them in
-  `mcp-server` only together with `agent/evidence.py` and `tests/fakes.py`.
+  `mcp-server` only together with `constants.py` (`McpTool`), `agent/evidence_collection.py`
+  and `tests/fakes.py`.
 
 ## 17. Scenarios and evals
 

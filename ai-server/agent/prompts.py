@@ -1,11 +1,20 @@
-UNDERSTAND_PROMPT = """\
+"""Prompt texts for the three LLM steps, and the functions that build each step's messages."""
+
+import json
+from datetime import datetime, timezone
+
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+
+from agent.models import Evidence, IncidentScope
+
+SCOPE_PROMPT = """\
 You triage incident reports for an on-call engineer. Extract the scope of the
 investigation from the report. Only name a service if the report clearly refers to
 it; product words like "checkout" are not service names. Use a 15 minute window
 unless the report says otherwise.
 """
 
-CORRELATE_PROMPT = """\
+ROOT_CAUSE_PROMPT = """\
 You are an on-call engineer investigating a production incident. Evidence has
 already been gathered automatically from Kubernetes and Prometheus; it is below as
 JSON, one item per tool call (errors included).
@@ -46,3 +55,36 @@ them (config changes restart pods too); mention it in likely_cause, but it does 
 the category bad_deployment.
 root_cause_service is where the fix belongs (e.g. the database, not the services failing because of it).
 """
+
+
+def evidence_as_json(evidence: list[Evidence]) -> str:
+    return json.dumps([e.model_dump(exclude_none=True) for e in evidence], default=str, separators=(",", ":"))
+
+
+def scope_messages(question: str) -> list[BaseMessage]:
+    return [SystemMessage(SCOPE_PROMPT), HumanMessage(question)]
+
+
+def root_cause_messages(question: str, scope: IncidentScope, namespace: str, evidence: list[Evidence]) -> list[BaseMessage]:
+    return [
+        SystemMessage(ROOT_CAUSE_PROMPT),
+        HumanMessage("\n".join([
+            f"Current time (UTC): {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
+            f"Incident report: {question}",
+            f"Understood scope: {scope.model_dump_json()}",
+            f"Namespace: {namespace}",
+            f"Evidence: {evidence_as_json(evidence)}",
+        ])),
+    ]
+
+
+def report_messages(question: str, evidence: list[Evidence], notes: list[str], analysis: str) -> list[BaseMessage]:
+    return [
+        SystemMessage(REPORT_PROMPT),
+        HumanMessage("\n".join([
+            f"Incident report: {question}",
+            f"Evidence: {evidence_as_json(evidence)}",
+            f"Investigation notes: {'; '.join(notes) or 'none'}",
+            f"Analysis: {analysis or '(no analysis produced)'}",
+        ])),
+    ]

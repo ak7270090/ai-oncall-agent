@@ -3,17 +3,15 @@ from datetime import datetime, timedelta, timezone
 
 import httpx2
 
+from constants import METRIC_VALUE_DECIMALS, SERVICE_OVERVIEW_METRICS, Metric
 from observability.backend import MetricsError
 from observability.models import MetricSample, ServiceHealth
-from observability.queries import Metric, build_query
-
-VALUE_DECIMALS = 4
-OVERVIEW_METRICS: tuple[Metric, ...] = ("request_rate", "error_rate", "latency_p99_ms")
+from observability.queries import build_query
 
 
 def _parse_value(raw: str) -> float | None:
     value = float(raw)
-    return None if math.isnan(value) or math.isinf(value) else round(value, VALUE_DECIMALS)
+    return None if math.isnan(value) or math.isinf(value) else round(value, METRIC_VALUE_DECIMALS)
 
 
 class PrometheusBackend:
@@ -59,7 +57,7 @@ class PrometheusBackend:
 
     def service_overview(self, namespace: str) -> list[ServiceHealth]:
         values: dict[str, dict[str, float | None]] = {}
-        for metric in OVERVIEW_METRICS:
+        for metric in SERVICE_OVERVIEW_METRICS:
             query = build_query(metric, namespace, None, self._window, group_by=("service",))
             for series in self._get("/api/v1/query", {"query": query}):
                 service = series["metric"].get("service", "unknown")

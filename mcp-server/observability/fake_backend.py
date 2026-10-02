@@ -1,8 +1,8 @@
 from datetime import timedelta
 
+from constants import Metric
 from data import fake_cluster
 from observability.models import MetricSample, ServiceHealth
-from observability.queries import Metric
 
 SAMPLE_STEP = timedelta(minutes=1)
 

@@ -14,12 +14,8 @@ from cluster.models import (
     summarize_pod,
 )
 from config import Settings
+from constants import DEFAULT_EVENT_LIMIT, DEFAULT_LOG_LINES, MAX_EVENT_LIMIT, MAX_LOG_LINES
 from tools.guards import namespace_guard
-
-DEFAULT_LOG_LINES = 50
-MAX_LOG_LINES = 500
-DEFAULT_EVENT_LIMIT = 20
-MAX_EVENT_LIMIT = 100
 
 
 def build_kubernetes_tools(backend: ClusterBackend, settings: Settings) -> list[Callable]:

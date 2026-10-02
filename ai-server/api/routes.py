@@ -10,6 +10,7 @@ from api.schemas import (
     ToolDescription,
     ToolsResponse,
 )
+from constants import HEALTH_STATUS_OK, READY_STATUS
 from mcp_client import list_all_tools, to_langchain_tool
 
 router = APIRouter()
@@ -17,14 +18,14 @@ router = APIRouter()
 
 @router.get("/health", response_model=StatusResponse)
 async def health() -> StatusResponse:
-    return StatusResponse(status="ok")
+    return StatusResponse(status=HEALTH_STATUS_OK)
 
 
 @router.get("/ready", response_model=StatusResponse)
 async def ready(open_mcp: MCPConnectorDep) -> StatusResponse:
     async with open_mcp() as mcp_client:
         await list_all_tools(mcp_client)
-    return StatusResponse(status="ready")
+    return StatusResponse(status=READY_STATUS)
 
 
 @router.get("/tools", response_model=ToolsResponse)

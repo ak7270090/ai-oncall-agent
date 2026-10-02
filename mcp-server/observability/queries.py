@@ -12,23 +12,7 @@ cpu_throttled_ratio uses kubelet cAdvisor series, labelled by `container` (our
 container names equal service names) instead of `service`.
 """
 
-from typing import Literal
-
-Metric = Literal[
-    "request_rate", "error_rate", "error_count", "latency_p99_ms", "cpu_cores", "cpu_throttled_ratio", "memory_mb"
-]
-
-UNITS: dict[str, str] = {
-    "request_rate": "req/s",
-    "error_rate": "ratio (0-1) of 5xx responses",
-    "error_count": "5xx responses in window",
-    "latency_p99_ms": "ms",
-    "cpu_cores": "cores per pod (avg); compare with the container cpu_limit",
-    "cpu_throttled_ratio": "ratio (0-1) of CPU periods throttled at the container limit",
-    "memory_mb": "MiB per pod (avg)",
-}
-
-BYTES_PER_MIB = 1024 * 1024
+from constants import BYTES_PER_MIB, Metric
 
 
 def label_selector(namespace: str, service: str | None = None, service_label: str = "service") -> str:

@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 
 from cluster import ClusterBackend, create_backend
 from config import Settings, get_settings
+from constants import HEALTH_STATUS_OK
 from observability import MetricsBackend, create_metrics_backend
 from tools import build_tools
 
@@ -21,7 +22,7 @@ def create_server(
 
     @server.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
-        return JSONResponse({"status": "ok"})
+        return JSONResponse({"status": HEALTH_STATUS_OK})
 
     return server
 

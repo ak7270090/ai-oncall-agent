@@ -1,15 +1,17 @@
+"""Running an investigation end to end, and re-running only its reasoning (for evals)."""
+
 from dataclasses import dataclass
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langgraph.graph.state import CompiledStateGraph
 
+from agent.chat_model import invoke_llm
 from agent.models import Evidence, IncidentReport, IncidentScope
+from agent.prompts import report_messages, root_cause_messages
 from agent.report import render_markdown
-
-# understand, sweep, focus, follow_dependencies, correlate, report; each follow-up
-# round adds follow_up + correlate.
-FIXED_GRAPH_STEPS = 6
-STEPS_PER_FOLLOW_UP = 2
+from agent.state import new_investigation_state
+from constants import GRAPH_STEPS_PER_FOLLOW_UP, GRAPH_STEPS_WITHOUT_FOLLOW_UPS
 
 
 @dataclass(frozen=True)
@@ -31,11 +33,8 @@ def _still_wanted_tools(messages: list) -> bool:
 
 
 async def run_investigation(graph: CompiledStateGraph, question: str, max_follow_up_rounds: int) -> InvestigationResult:
-    final = await graph.ainvoke(
-        {"question": question, "scope": None, "namespace": "", "evidence": [], "notes": [], "steps": [],
-         "llm_calls": 0, "messages": [], "follow_up_rounds": 0, "report": None},
-        {"recursion_limit": FIXED_GRAPH_STEPS + STEPS_PER_FOLLOW_UP * max_follow_up_rounds + 1},
-    )
+    recursion_limit = GRAPH_STEPS_WITHOUT_FOLLOW_UPS + GRAPH_STEPS_PER_FOLLOW_UP * max_follow_up_rounds + 1
+    final = await graph.ainvoke(new_investigation_state(question), {"recursion_limit": recursion_limit})
     return InvestigationResult(
         report=final["report"],
         answer=render_markdown(final["report"]),
@@ -47,3 +46,15 @@ async def run_investigation(graph: CompiledStateGraph, question: str, max_follow
         llm_calls=final["llm_calls"],
         follow_up_limit_reached=_still_wanted_tools(final["messages"]),
     )
+
+
+async def reanalyze_evidence(
+    chat_model: BaseChatModel, question: str, scope: IncidentScope, namespace: str,
+    evidence: list[Evidence], notes: list[str],
+) -> tuple[str, IncidentReport]:
+    """find_root_cause + write_report on already-collected evidence, without follow-up
+    tool calls. Used by `make replay` to test prompt changes on saved investigations."""
+    analysis = await invoke_llm(chat_model, root_cause_messages(question, scope, namespace, evidence))
+    report = await invoke_llm(chat_model.with_structured_output(IncidentReport),
+                              report_messages(question, evidence, notes, analysis.text))
+    return analysis.text, report

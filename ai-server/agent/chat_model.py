@@ -1,5 +1,8 @@
+from typing import Any
+
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage
 
 from config import Settings
 
@@ -21,3 +24,11 @@ def create_chat_model(settings: Settings) -> BaseChatModel:
         )
     except Exception as error:
         raise LLMError(f"Could not create chat model '{settings.llm_model}' (check LLM_MODEL / LLM_API_KEY): {error}") from error
+
+
+async def invoke_llm(runnable: Any, messages: list[BaseMessage]) -> Any:
+    """Call a chat model (plain, tool-bound or structured); any provider failure becomes LLMError."""
+    try:
+        return await runnable.ainvoke(messages)
+    except Exception as error:
+        raise LLMError(f"LLM call failed: {error}") from error

@@ -4,13 +4,10 @@ from typing import Annotated
 from pydantic import Field
 
 from config import Settings
+from constants import DEFAULT_HISTORY_MINUTES, MAX_HISTORY_MINUTES, METRIC_UNITS, NAME_PATTERN, Metric
 from observability import MetricsBackend
 from observability.models import MetricSeries, ServiceOverview
-from observability.queries import UNITS, Metric
-from tools.guards import NAME_PATTERN, namespace_guard
-
-DEFAULT_HISTORY_MINUTES = 15
-MAX_HISTORY_MINUTES = 120
+from tools.guards import namespace_guard
 
 
 def build_observability_tools(backend: MetricsBackend, settings: Settings) -> list[Callable]:
@@ -45,7 +42,7 @@ def build_observability_tools(backend: MetricsBackend, settings: Settings) -> li
             namespace=namespace,
             service=service,
             metric=metric,
-            unit=UNITS[metric],
+            unit=METRIC_UNITS[metric],
             step_seconds=settings.metrics_step_seconds,
             samples=backend.metric_history(namespace, service, metric, minutes),
         )

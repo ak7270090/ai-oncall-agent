@@ -5,6 +5,7 @@ its pods crash-loop; order-service fails downstream; user-service is healthy.
 """
 
 from datetime import datetime, timezone
+
 from cluster.models import (
     ClusterEvent,
     Condition,
@@ -15,6 +16,7 @@ from cluster.models import (
 )
 
 NAMESPACE = "shop"
+
 
 def _at(hour: int, minute: int, day: int = 27) -> datetime:
     return datetime(2026, 9, day, hour, minute, tzinfo=timezone.utc)

@@ -1,4 +1,4 @@
-"""Re-runs only the LLM reasoning (correlate + report) on evidence saved by an eval run,
+"""Re-runs only the LLM reasoning (find_root_cause + write_report) on evidence saved by an eval run,
 so prompt changes can be checked in seconds instead of re-injecting incidents.
 
 Run with `make replay [RUN=evals/results/<file>.json] [NAME=a,b] [TIMES=n]`: it uses the
@@ -17,7 +17,7 @@ RESULTS_DIR = EVALS_DIR / "results"
 sys.path.insert(0, str(EVALS_DIR.parent / "ai-server"))
 
 from agent import Evidence, IncidentScope, create_chat_model  # noqa: E402
-from agent.graph import analyze_evidence  # noqa: E402
+from agent.investigation import reanalyze_evidence  # noqa: E402
 from config import get_settings  # noqa: E402
 from scenarios import SCENARIOS  # noqa: E402
 
@@ -35,7 +35,7 @@ def latest_run_with_evidence() -> Path:
 async def replay_once(chat_model, question: str, response: dict) -> tuple[str, str, str]:
     evidence = [Evidence(**{k: e.get(k) for k in ("step", "source", "arguments", "error", "result")})
                 for e in response["evidence"]]
-    _, report = await analyze_evidence(
+    _, report = await reanalyze_evidence(
         chat_model, question, IncidentScope(**response["scope"]), response["namespace"],
         evidence, response["notes"],
     )

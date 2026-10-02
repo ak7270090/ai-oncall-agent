@@ -7,9 +7,8 @@ from fastapi.responses import JSONResponse
 from agent import LLMError
 from api import router
 from config import get_settings
+from constants import LLM_FAILURE_MESSAGE
 from mcp_client import MCPUnavailableError
-
-LLM_FAILURE_MESSAGE = "The LLM provider request failed. See server logs for details."
 
 logger = logging.getLogger(__name__)
 

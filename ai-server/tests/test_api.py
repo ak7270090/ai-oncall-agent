@@ -6,7 +6,8 @@ from langchain_core.runnables import RunnableLambda
 from agent import create_chat_model
 from api.dependencies import get_chat_model, get_mcp_connector
 from config import Settings, get_settings
-from main import LLM_FAILURE_MESSAGE, app
+from constants import LLM_FAILURE_MESSAGE, Step
+from main import app
 from mcp_client import connect_to_mcp
 from tests.fakes import PAYMENT_DOWN, build_fake_mcp_server, fake_connector, scripted_model
 
@@ -59,7 +60,8 @@ def test_investigate_returns_structured_report_and_evidence(client):
     response = client.post("/investigate", json={"question": "Checkout is failing"})
     assert response.status_code == 200
     body = response.json()
-    assert body["steps"] == ["understand", "sweep", "focus", "follow_dependencies", "correlate", "report"]
+    assert body["steps"] == [Step.EXTRACT_INCIDENT_SCOPE, Step.COLLECT_NAMESPACE_OVERVIEW, Step.INSPECT_FLAGGED_PROBLEMS,
+                             Step.TRACE_FAILING_DEPENDENCIES, Step.FIND_ROOT_CAUSE, Step.WRITE_REPORT]
     assert body["report"]["confidence"] == "high"
     assert body["answer"].startswith("**Incident:**")
     assert body["llm_calls"] == 3
