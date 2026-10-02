@@ -13,7 +13,7 @@ from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from agent.evidence.toolbox import MCPToolbox
+from agent.evidence.mcp_toolbox import MCPToolbox
 from agent.workflow.nodes import InvestigationNodes
 from agent.workflow.state import InvestigationState
 from config import Settings

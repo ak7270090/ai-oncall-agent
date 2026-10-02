@@ -49,3 +49,21 @@ class IncidentReport(BaseModel):
     confidence: Literal["low", "medium", "high"]
     recommended_actions: list[str] = Field(description="Concrete next steps for a human; the agent cannot change anything")
     timeline: list[str] = Field(description="Timestamped events in order, if the evidence shows them")
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"**Incident:** {self.incident}",
+            f"**Impact:** {self.impact}",
+            "",
+            "**Evidence:**",
+            *(f"- `{e.source}`: {e.finding}" for e in self.evidence),
+            "",
+            f"**Likely cause** ({self.confidence} confidence): {self.likely_cause}",
+            f"**Root cause:** `{self.cause_category}` in `{self.root_cause_service or 'unknown'}`",
+            "",
+            "**Recommended action:**",
+            *(f"- {action}" for action in self.recommended_actions),
+        ]
+        if self.timeline:
+            lines += ["", "**Timeline:**", *(f"- {entry}" for entry in self.timeline)]
+        return "\n".join(lines)

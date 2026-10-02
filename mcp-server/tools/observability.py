@@ -1,13 +1,19 @@
 from collections.abc import Callable
 from typing import Annotated
 
+from observability import MetricsBackend
+from observability.models import MetricSeries, ServiceOverview
 from pydantic import Field
 
 from config import Settings
-from constants import DEFAULT_HISTORY_MINUTES, MAX_HISTORY_MINUTES, METRIC_UNITS, NAME_PATTERN, Metric
-from observability import MetricsBackend
-from observability.models import MetricSeries, ServiceOverview
-from tools.guards import namespace_guard
+from constants import (
+    DEFAULT_HISTORY_MINUTES,
+    MAX_HISTORY_MINUTES,
+    METRIC_UNITS,
+    NAME_PATTERN,
+    Metric,
+)
+from tools.helpers import namespace_guard
 
 
 def build_observability_tools(backend: MetricsBackend, settings: Settings) -> list[Callable]:

@@ -74,17 +74,19 @@ message.
 ## 6. Naming
 
 - Names say what a thing is or does: `connect_to_mcp`, `load_langchain_tools`,
-  `MAX_LOG_LINES`, `mcp_client`. Avoid `data`, `obj`, `tmp`, `helper`, `utils`,
-  `c`, `x`.
+  `MAX_LOG_LINES`, `mcp_client`. Avoid `data`, `obj`, `tmp`, `c`, `x`.
 - Functions start with a verb. Booleans read as a yes/no question: `is_error`,
   `completed`.
-- Name files after their contents: `connection.py`, `investigation.py`, not
-  `misc.py`.
+- Name files after their contents: `connection.py`, `collection_steps.py`,
+  `mcp_toolbox.py`, not `misc.py`, `collection.py` or `signals.py`.
+- Small pure functions used by the other modules of a package go in that
+  package's `helpers.py` (`agent/evidence/helpers.py`, `tools/helpers.py`). Don't
+  create a project-wide `utils.py`.
+- Don't create a file for a single small function. Put it where it belongs,
+  e.g. formatting a report is `IncidentReport.to_markdown()` in `agent/models.py`.
 - Name functions after their purpose in the domain, not a metaphor:
   `collect_namespace_overview`, not `sweep`. A reader should know what a function
   does without opening it.
-- Group small pure functions by what they're about (`agent/evidence/signals.py`: problem
-  signals in evidence), never in a catch-all `helpers.py`/`utils.py`.
 - Avoid functions defined inside functions. Prefer a class whose methods share
   dependencies (`InvestigationNodes`). Exception: MCP tool factories
   (`build_kubernetes_tools`) use closures because each tool's JSON Schema
@@ -199,7 +201,7 @@ message.
   `MetricsBackend`) so every tool is testable without a cluster. Never mix
   synthetic data with a real backend.
 - Validate every value that gets put into a query language (PromQL, label
-  selectors) against a strict pattern (`tools/guards.py::NAME_PATTERN`). Never
+  selectors) against a strict pattern (`constants.py::NAME_PATTERN`). Never
   build a query from free text.
 - Write tool errors for the model. Say what went wrong **and what to do next**
   (for example "no previous container; call again with previous=false"). A vague
@@ -210,7 +212,7 @@ message.
 ## 16. Investigation graph (AI server)
 
 - Evidence gathering that should always happen goes in deterministic graph
-  steps (`agent/evidence/collection.py`), not in the prompt. The LLM understands the
+  steps (`agent/evidence/collection_steps.py`), not in the prompt. The LLM understands the
   question, reasons over evidence and writes the report. It doesn't decide the
   basic checks.
 - LLM outputs that code consumes are typed with `with_structured_output(Model)`
@@ -222,7 +224,7 @@ message.
 - A missing MCP tool degrades the investigation (step skipped and noted); it
   never breaks it.
 - The graph depends on MCP tool names and result fields. Change them in
-  `mcp-server` only together with `constants.py` (`McpTool`), `agent/evidence/collection.py`
+  `mcp-server` only together with `constants.py` (`McpTool`), `agent/evidence/collection_steps.py`
   and `tests/fakes.py`.
 
 ## 17. Scenarios and evals

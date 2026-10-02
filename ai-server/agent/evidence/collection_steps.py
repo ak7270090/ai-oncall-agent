@@ -1,11 +1,11 @@
 """The fixed evidence-collection steps: which MCP tools to call, decided by code from
-what earlier calls returned (see agent/evidence/signals.py for the rules). The LLM only reasons
+what earlier calls returned (see agent/evidence/helpers.py for the rules). The LLM only reasons
 over the result. Calls within a step run in parallel."""
 
 import asyncio
 from dataclasses import dataclass
 
-from agent.evidence.signals import (
+from agent.evidence.helpers import (
     degraded_deployments,
     failing_services,
     first_result,
@@ -16,7 +16,7 @@ from agent.evidence.signals import (
     unhealthy_pods,
     without_stale_pod_events,
 )
-from agent.evidence.toolbox import MCPToolbox
+from agent.evidence.mcp_toolbox import MCPToolbox
 from agent.models import Evidence, IncidentScope
 from constants import McpTool, Metric, Step
 

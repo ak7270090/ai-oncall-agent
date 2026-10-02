@@ -1,4 +1,4 @@
-from agent.evidence.toolbox import MCPToolbox
+from agent.evidence.mcp_toolbox import MCPToolbox
 from agent.investigation import (
     InvestigationResult,
     reanalyze_evidence,

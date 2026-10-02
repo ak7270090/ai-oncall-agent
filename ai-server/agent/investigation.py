@@ -9,7 +9,6 @@ from langgraph.graph.state import CompiledStateGraph
 from agent.llm.chat_model import invoke_llm
 from agent.llm.prompts import report_messages, root_cause_messages
 from agent.models import Evidence, IncidentReport, IncidentScope
-from agent.report import render_markdown
 from agent.workflow.state import new_investigation_state
 from constants import GRAPH_STEPS_PER_FOLLOW_UP, GRAPH_STEPS_WITHOUT_FOLLOW_UPS
 
@@ -37,7 +36,7 @@ async def run_investigation(graph: CompiledStateGraph, question: str, max_follow
     final = await graph.ainvoke(new_investigation_state(question), {"recursion_limit": recursion_limit})
     return InvestigationResult(
         report=final["report"],
-        answer=render_markdown(final["report"]),
+        answer=final["report"].to_markdown(),
         scope=final["scope"],
         namespace=final["namespace"],
         evidence=final["evidence"],

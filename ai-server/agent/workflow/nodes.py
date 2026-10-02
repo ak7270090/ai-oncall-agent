@@ -7,9 +7,9 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
 
-from agent.evidence import collection as evidence_collection
-from agent.evidence.collection import CollectionLimits
-from agent.evidence.toolbox import MCPToolbox, evidence_from_tool_messages
+from agent.evidence import collection_steps
+from agent.evidence.collection_steps import CollectionLimits
+from agent.evidence.mcp_toolbox import MCPToolbox, evidence_from_tool_messages
 from agent.llm.chat_model import invoke_llm
 from agent.llm.prompts import report_messages, root_cause_messages, scope_messages
 from agent.models import IncidentReport, IncidentScope
@@ -50,18 +50,18 @@ class InvestigationNodes:
 
     async def collect_namespace_overview(self, state: InvestigationState) -> dict:
         notes: list[str] = []
-        found = await evidence_collection.collect_namespace_overview(self._toolbox, state["namespace"], notes)
+        found = await collection_steps.collect_namespace_overview(self._toolbox, state["namespace"], notes)
         return {"evidence": found, "notes": notes, "steps": [Step.COLLECT_NAMESPACE_OVERVIEW]}
 
     async def inspect_flagged_problems(self, state: InvestigationState) -> dict:
         notes: list[str] = []
-        found = await evidence_collection.inspect_flagged_problems(
+        found = await collection_steps.inspect_flagged_problems(
             self._toolbox, state["namespace"], state["scope"], state["evidence"], self._limits, notes)
         return {"evidence": found, "notes": notes, "steps": [Step.INSPECT_FLAGGED_PROBLEMS]}
 
     async def trace_failing_dependencies(self, state: InvestigationState) -> dict:
         notes: list[str] = []
-        found = await evidence_collection.trace_failing_dependencies(
+        found = await collection_steps.trace_failing_dependencies(
             self._toolbox, state["namespace"], state["evidence"], state["scope"].window_minutes, notes)
         return {"evidence": found, "notes": notes, "steps": [Step.TRACE_FAILING_DEPENDENCIES]}
 

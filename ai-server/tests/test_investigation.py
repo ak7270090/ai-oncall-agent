@@ -1,9 +1,8 @@
 import pytest
 
 from agent import Evidence, MCPToolbox, build_investigation_graph, run_investigation
-from agent.evidence.signals import services_blamed_in_logs, without_stale_pod_events
+from agent.evidence.helpers import services_blamed_in_logs, without_stale_pod_events
 from agent.investigation import reanalyze_evidence
-from agent.report import render_markdown
 from config import Settings
 from constants import Step
 from mcp_client import list_all_tools, to_langchain_tool
@@ -129,7 +128,7 @@ async def test_slow_service_gets_latency_cpu_and_pod_limits():
 
 
 def test_markdown_report_has_every_section():
-    markdown = render_markdown(report())
+    markdown = report().to_markdown()
     for heading in ("**Incident:**", "**Impact:**", "**Evidence:**", "**Likely cause**", "**Root cause:**",
                     "**Recommended action:**", "**Timeline:**"):
         assert heading in markdown

@@ -27,15 +27,15 @@ ai-oncall-agent/
 │   ├── config/settings.py     MCP_* settings
 │   ├── cluster/               Kubernetes backends: kubernetes_backend.py (real), fake_backend.py; models.py
 │   ├── observability/         metrics backends: prometheus_backend.py, fake_backend.py; queries.py (PromQL)
-│   ├── tools/                 tool layer: kubernetes.py, observability.py, guards.py
+│   ├── tools/                 tool layer: kubernetes.py, observability.py, helpers.py (namespace allowlist)
 │   ├── data/fake_cluster.py   the fake incident
 │   └── tests/                 unit + integration/ (live kind cluster, RBAC checks)
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
 │   ├── api/                   routes, schemas, dependencies
-│   ├── agent/                 investigation.py (entry point), models.py, report.py (Markdown)
+│   ├── agent/                 investigation.py (entry point), models.py (IncidentReport.to_markdown())
 │   │   ├── workflow/          graph.py (wiring), nodes.py (the steps), state.py
-│   │   ├── evidence/          collection.py (deterministic checks), signals.py (rules), toolbox.py
+│   │   ├── evidence/          collection_steps.py (deterministic checks), helpers.py (rules), mcp_toolbox.py
 │   │   └── llm/               chat_model.py (provider-agnostic), prompts.py
 │   ├── mcp_client/            connection.py, tools.py (MCP → LangChain adapter)
 │   ├── config/settings.py
@@ -365,8 +365,8 @@ START → extract_incident_scope → collect_namespace_overview → inspect_flag
 Code layout (`ai-server/agent/`): `workflow/graph.py` only wires the flow; each
 step is a method of `InvestigationNodes` in `workflow/nodes.py`; the state passed
 between steps is `InvestigationState` in `workflow/state.py`; the collection steps
-are in `evidence/collection.py` and the rules they use (unhealthy pods, failing or
-slow services…) in `evidence/signals.py`; LLM setup and prompts are in `llm/`.
+are in `evidence/collection_steps.py` and the rules they use (unhealthy pods, failing or
+slow services…) in `evidence/helpers.py`; LLM setup and prompts are in `llm/`.
 Step names, MCP tool names and other fixed values are in `ai-server/constants.py`.
 
 | Step | Who | What |
