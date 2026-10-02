@@ -1,6 +1,6 @@
 """Fake cluster state for MCP_BACKEND=fake (tests, demos without a cluster).
 
-Scenario: payment-service v2.4.0 points at a database host that doesn't exist, so
+The incident: payment-service v2.4.0 points at a database host that doesn't exist, so
 its pods crash-loop; order-service fails downstream; user-service is healthy.
 """
 

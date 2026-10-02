@@ -54,7 +54,7 @@ def get_store() -> PaymentStore:
 
 
 def inject_fault() -> None:
-    """Phase 9 scenarios: `error` simulates a v2 regression, `latency` a slow dependency."""
+    """Phase 9 incidents: `error` simulates a v2 regression, `latency` a slow dependency."""
     if settings.fault_mode == "latency":
         time.sleep(settings.fault_latency_seconds)
     if settings.fault_mode == "error":

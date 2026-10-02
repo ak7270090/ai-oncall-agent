@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     db_password: SecretStr
     db_connect_timeout_seconds: int = 2
 
-    # Fault injection for the Phase 9 incident scenarios; "none" in normal operation.
+    # Fault injection for the Phase 9 incidents; "none" in normal operation.
     fault_mode: Literal["none", "error", "latency"] = "none"
     fault_latency_seconds: float = 3
 

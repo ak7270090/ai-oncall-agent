@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from constants import Metric
-from data import fake_cluster
+from fake import incident_data
 from observability.models import MetricSample, ServiceHealth
 
 SAMPLE_STEP = timedelta(minutes=1)
@@ -11,14 +11,14 @@ class FakeMetricsBackend:
     """Serves the canned incident's metrics; same behavior contract as PrometheusBackend."""
 
     def metric_history(self, namespace: str, service: str, metric: Metric, minutes: int) -> list[MetricSample]:
-        if namespace != fake_cluster.NAMESPACE:
+        if namespace != incident_data.NAMESPACE:
             return []
-        values = fake_cluster.METRICS.get(service, {}).get(metric, [])
-        first = fake_cluster.METRICS_END_TIME - SAMPLE_STEP * (len(values) - 1)
+        values = incident_data.METRICS.get(service, {}).get(metric, [])
+        first = incident_data.METRICS_END_TIME - SAMPLE_STEP * (len(values) - 1)
         return [MetricSample(time=first + SAMPLE_STEP * i, value=v) for i, v in enumerate(values)]
 
     def service_overview(self, namespace: str) -> list[ServiceHealth]:
-        if namespace != fake_cluster.NAMESPACE:
+        if namespace != incident_data.NAMESPACE:
             return []
         return [
             ServiceHealth(
@@ -27,5 +27,5 @@ class FakeMetricsBackend:
                 error_rate=metrics["error_rate"][-1],
                 latency_p99_ms=metrics["latency_p99_ms"][-1],
             )
-            for service, metrics in sorted(fake_cluster.METRICS.items())
+            for service, metrics in sorted(incident_data.METRICS.items())
         ]

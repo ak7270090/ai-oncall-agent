@@ -169,7 +169,7 @@ message.
 
 ## 14. Kubernetes
 
-- All manifests go through kustomize (`kubernetes/base/kustomization.yaml`; incidents are overlays in `kubernetes/scenarios/`). Add new
+- All manifests go through kustomize (`kubernetes/base/kustomization.yaml`; incidents are overlays in `kubernetes/incidents/`). Add new
   files to its `resources`.
 - Image tags live in the manifests and in the Makefile's `TAG` variable. Change
   both together.
@@ -227,14 +227,14 @@ message.
   `mcp-server` only together with `constants.py` (`McpTool`), `agent/evidence/collection_steps.py`
   and `tests/fakes.py`.
 
-## 17. Scenarios and evals
+## 17. Incidents and evals
 
-- Every incident scenario is a kustomize overlay in `kubernetes/scenarios/<name>`
+- Every incident is a kustomize overlay in `kubernetes/incidents/<name>`
   on top of `kubernetes/base`. Never hand-edit a running cluster to set up a
-  scenario.
+  incident.
 - Fault-injection code in the sample services is switched on only by an explicit
   setting (`FAULT_MODE`), defaults to off, and is clearly labelled as such.
-- A scenario isn't done until it's in `evals/scenarios.py`, with a vague
+- An incident isn't done until it's in `evals/incident_cases.py`, with a vague
   operator-style question (never naming the cause), a symptom condition and the
   expected `cause_category` / `root_cause_service`.
 - Change the investigation graph or prompts only together with an eval run, and

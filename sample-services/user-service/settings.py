@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     server_host: str = "0.0.0.0"
     server_port: int = 8080
 
-    # Fault injection for the Phase 9 incident scenarios; "none" in normal operation.
+    # Fault injection for the Phase 9 incidents; "none" in normal operation.
     fault_mode: Literal["none", "cpu"] = "none"
     fault_cpu_milliseconds: int = 800
 

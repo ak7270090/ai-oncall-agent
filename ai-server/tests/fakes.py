@@ -55,23 +55,23 @@ PAYMENT_CRASHLOOP: dict[str, Any] = {
 }
 
 
-def build_fake_mcp_server(scenario: dict[str, Any], with_metrics: bool = True) -> MCPServer:
+def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True) -> MCPServer:
     server = MCPServer("fake-mcp-server")
 
     @server.tool()
     def list_pods(namespace: str = NAMESPACE, app: str | None = None) -> dict:
         """Pods."""
-        return {"namespace": namespace, "pods": [p for p in scenario["pods"] if app is None or p["app"] == app]}
+        return {"namespace": namespace, "pods": [p for p in incident["pods"] if app is None or p["app"] == app]}
 
     @server.tool()
     def get_pod_status(pod: str, namespace: str = NAMESPACE) -> dict:
         """Pod status."""
-        return next(p for p in scenario["pods"] if p["name"] == pod)
+        return next(p for p in incident["pods"] if p["name"] == pod)
 
     @server.tool()
     def get_pod_logs(pod: str, namespace: str = NAMESPACE, lines: int = 50, previous: bool = False) -> dict:
         """Pod logs."""
-        source = scenario["previous_logs"] if previous else scenario["logs"]
+        source = incident["previous_logs"] if previous else incident["logs"]
         if pod not in source:
             raise ToolError(f"Pod '{pod}' has no previous (crashed) container")
         return {"pod": pod, "previous": previous, "lines": source[pod][-lines:]}
@@ -79,12 +79,12 @@ def build_fake_mcp_server(scenario: dict[str, Any], with_metrics: bool = True) -
     @server.tool()
     def list_deployments(namespace: str = NAMESPACE) -> dict:
         """Deployments."""
-        return {"namespace": namespace, "deployments": scenario["deployments"]}
+        return {"namespace": namespace, "deployments": incident["deployments"]}
 
     @server.tool()
     def get_deployment(name: str, namespace: str = NAMESPACE) -> dict:
         """Deployment with rollout history."""
-        deployment = next(d for d in scenario["deployments"] if d["name"] == name)
+        deployment = next(d for d in incident["deployments"] if d["name"] == name)
         return {**deployment, "revisions": [{"revision": 1, "ready_replicas": deployment["ready_replicas"]}]}
 
     @server.tool()
@@ -96,7 +96,7 @@ def build_fake_mcp_server(scenario: dict[str, Any], with_metrics: bool = True) -
         @server.tool()
         def get_service_overview(namespace: str = NAMESPACE) -> dict:
             """Service health."""
-            return {"namespace": namespace, "window": "1m", "services": scenario["overview"]}
+            return {"namespace": namespace, "window": "1m", "services": incident["overview"]}
 
         @server.tool()
         def get_metrics(service: str, metric: str, namespace: str = NAMESPACE, minutes: int = 15) -> dict:

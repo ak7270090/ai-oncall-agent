@@ -51,7 +51,7 @@ async def health() -> dict:
 
 
 def burn_cpu(milliseconds: int) -> None:
-    """Phase 9 high-CPU scenario: hash in a loop until this much CPU time is used."""
+    """Phase 9 high-CPU incident: hash in a loop until this much CPU time is used."""
     deadline = time.process_time() + milliseconds / 1000
     digest = b"seed"
     while time.process_time() < deadline:

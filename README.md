@@ -25,10 +25,10 @@ ai-oncall-agent/
 ├── mcp-server/
 │   ├── server.py              create_server(): registers tools, /health route
 │   ├── config/settings.py     MCP_* settings
-│   ├── cluster/               Kubernetes backends: kubernetes_backend.py (real), fake_backend.py; models.py
-│   ├── observability/         metrics backends: prometheus_backend.py, fake_backend.py; queries.py (PromQL)
+│   ├── cluster/               real Kubernetes: backend.py (interface), kubernetes_backend.py, models.py
+│   ├── observability/         real Prometheus: backend.py (interface), prometheus_backend.py, queries.py (PromQL)
+│   ├── fake/                  MCP_BACKEND=fake: incident_data.py, cluster_backend.py, metrics_backend.py
 │   ├── tools/                 tool layer: kubernetes.py, observability.py, helpers.py (namespace allowlist)
-│   ├── data/fake_cluster.py   the fake incident
 │   └── tests/                 unit + integration/ (live kind cluster, RBAC checks)
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
@@ -41,8 +41,8 @@ ai-oncall-agent/
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
-├── kubernetes/            base/ (healthy system, ns shop), scenarios/ (incident overlays), monitoring/ (Prometheus)
-├── evals/                 incident eval: scenarios.py (expected answers), run_eval.py
+├── kubernetes/            base/ (healthy system, ns shop), incidents/ (incident overlays), monitoring/ (Prometheus)
+├── evals/                 incident eval: incident_cases.py (expected answers), run_eval.py
 ├── docker-compose.yml     AI server + MCP server (fake data)
 ├── docker-compose.kind.yml  overlay: MCP server reads the kind cluster
 ├── Makefile               every command: make help
@@ -84,8 +84,8 @@ Everything runs through the `Makefile`; `make help` lists the targets:
 | `make cluster-up` / `make smoke-test` / `make cluster-down` | Kind cluster with the sample services |
 | `make redeploy` | Rebuild the sample-service images and restart them in the cluster |
 | `make mcp-kubeconfig` | Fresh short-lived, read-only credentials for the MCP server |
-| `make scenario NAME=…` / `make scenario-reset` | Inject an incident / return to healthy |
-| `make eval [NAME=a,b]` | Run incident scenarios end to end and grade the agent |
+| `make incident NAME=…` / `make incident-reset` | Inject an incident / return to healthy |
+| `make eval [NAME=a,b]` | Run incidents end to end and grade the agent |
 | `make replay [NAME=..] [TIMES=n]` | Re-run only the LLM reasoning on evidence saved by the last eval (seconds) |
 
 Override variables per run, e.g. `make cluster-up CLUSTER=test`.
@@ -268,13 +268,13 @@ minute order-service's error rate climbs, and its logs say
 `upstream unavailable: POST http://payment-service/payments`. Ask
 `/investigate` why checkout fails. Restore with `--replicas=2`.
 
-## Incident scenarios and evaluation (Phase 9)
+## Incidents and evaluation (Phase 9)
 
 Six realistic failures, each a kustomize overlay on the healthy base
-(`kubernetes/scenarios/<name>`). Inject one with `make scenario NAME=<name>`
-and undo it with `make scenario-reset`.
+(`kubernetes/incidents/<name>`). Inject one with `make incident NAME=<name>`
+and undo it with `make incident-reset`.
 
-| Scenario | What breaks | Expected root cause |
+| Incident | What breaks | Expected root cause |
 | --- | --- | --- |
 | `payment-down` | payment-service scaled to 0 | `dependency_unavailable` in payment-service |
 | `db-down` | Postgres (`payments-db`) scaled to 0 → payment-service 503 → order-service 502 | `dependency_unavailable` in **payments-db** (two hops from the symptom) |
@@ -284,12 +284,12 @@ and undo it with `make scenario-reset`.
 | `slow-payments` | payment-service takes 3s per request | `slow_dependency` in payment-service |
 
 The faults are real behaviour in the sample services, switched on by a
-`FAULT_MODE` setting that only the scenario overlays set (`error`/`latency` in
+`FAULT_MODE` setting that only the incident overlays set (`error`/`latency` in
 payment-service, `cpu` in user-service). payment-service stores payments in
 Postgres, whose password is a generated Secret like the API key.
 
 **Eval.** With the cluster and both servers running, `make eval` does the
-following for each scenario:
+following for each incident:
 1. Inject it.
 2. Wait until the symptom shows in Prometheus or in pod restarts.
 3. Ask `/investigate` a vague, operator-style question that doesn't name the
@@ -300,7 +300,7 @@ following for each scenario:
 
 Results are printed as a table and saved to `evals/results/` (gitignored).
 Run a subset with `make eval NAME=db-down,high-cpu`. Each run costs about 3
-LLM calls per scenario.
+LLM calls per incident.
 
 **Latest results: 6/6 pass, all with high confidence** (full run about 11 minutes).
 

@@ -7,8 +7,8 @@ SMOKE_IMAGE     ?= curlimages/curl:8.10.1
 SERVICES        := user-service payment-service order-service
 BASE_DIR        := kubernetes/base
 SECRET_ENVS     := $(BASE_DIR)/secrets/payment-service.env $(BASE_DIR)/secrets/payments-db.env
-SCENARIO_TAG    ?= v2
-SCENARIOS       := $(notdir $(wildcard kubernetes/scenarios/*))
+BAD_DEPLOY_TAG  ?= v2
+INCIDENTS       := $(notdir $(wildcard kubernetes/incidents/*))
 PYTHON_APPS     := mcp-server ai-server sample-services
 PYTHON          ?= $(if $(filter Windows_NT,$(OS)),python,python3)
 VENV_BIN        := $(if $(filter Windows_NT,$(OS)),Scripts,bin)
@@ -17,7 +17,7 @@ MCP_TOKEN_TTL   ?= 24h
 KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
 COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f docker-compose.yml -f docker-compose.kind.yml
 
-.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig scenario scenario-reset eval replay
+.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
@@ -31,9 +31,9 @@ help:
 	@echo "smoke-test          place an order through order-service inside the cluster"
 	@echo "mcp-kubeconfig      fresh read-only credentials for the MCP server (token TTL $(MCP_TOKEN_TTL))"
 	@echo "cluster-down        delete the kind cluster"
-	@echo "scenario NAME=x     inject an incident: $(SCENARIOS)"
-	@echo "scenario-reset      back to the healthy base manifests"
-	@echo "eval [NAME=a,b]     run scenarios end to end and grade the agent (needs cluster + both servers)"
+	@echo "incident NAME=x     inject an incident: $(INCIDENTS)"
+	@echo "incident-reset      back to the healthy base manifests"
+	@echo "eval [NAME=a,b]     inject each incident, ask the agent, grade its answer (needs cluster + both servers)"
 	@echo "replay [NAME=..] [TIMES=n] [RUN=..]  re-run only the LLM reasoning on evidence saved by an eval (seconds)"
 
 setup:
@@ -84,9 +84,9 @@ images:
 		docker build -q -t $$svc:$(TAG) sample-services/$$svc && \
 		kind load docker-image $$svc:$(TAG) --name $(CLUSTER) || exit 1; \
 	done
-	# The bad-deploy scenario's "new version": same code, FAULT_MODE set by the scenario.
-	docker tag payment-service:$(TAG) payment-service:$(SCENARIO_TAG)
-	kind load docker-image payment-service:$(SCENARIO_TAG) --name $(CLUSTER)
+	# The bad-deploy incident's "new version": same code, FAULT_MODE set by the incident patch.
+	docker tag payment-service:$(TAG) payment-service:$(BAD_DEPLOY_TAG)
+	kind load docker-image payment-service:$(BAD_DEPLOY_TAG) --name $(CLUSTER)
 
 # Same tag, new image: pods only pick it up after a restart.
 redeploy: images
@@ -119,11 +119,11 @@ smoke-test:
 		curl -sS --fail -X POST http://order-service/orders \
 		-H "content-type: application/json" -d '{"user_id": 1, "amount": 42.5}'
 
-scenario:
-	@test -n "$(NAME)" || (echo "usage: make scenario NAME=<$(SCENARIOS)>" && exit 1)
-	kubectl apply -k kubernetes/scenarios/$(NAME)
+incident:
+	@test -n "$(NAME)" || (echo "usage: make incident NAME=<$(INCIDENTS)>" && exit 1)
+	kubectl apply -k kubernetes/incidents/$(NAME)
 
-scenario-reset:
+incident-reset:
 	kubectl apply -k $(BASE_DIR)
 	kubectl wait deployment --all -n $(NAMESPACE) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
 

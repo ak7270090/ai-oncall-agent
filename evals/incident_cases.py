@@ -1,4 +1,4 @@
-"""Incident scenarios for the eval: how to recognize the symptom, what to ask the
+"""Incident cases for the eval: how to recognize the symptom, what to ask the
 agent (phrased like a real report, without naming the cause), and the expected answer."""
 
 from dataclasses import dataclass
@@ -21,7 +21,7 @@ class PodCondition:
 
 
 @dataclass(frozen=True)
-class Scenario:
+class IncidentCase:
     name: str
     question: str
     expected_category: str
@@ -39,43 +39,43 @@ def _p99_ms(service: str) -> str:
     return f"1000 * histogram_quantile(0.99, sum by (le) (rate({buckets}[30s])))"
 
 
-SCENARIOS: list[Scenario] = [
-    Scenario(
+INCIDENT_CASES: list[IncidentCase] = [
+    IncidentCase(
         name="payment-down",
         question="Customers say checkout started failing a few minutes ago. What is wrong?",
         expected_category="dependency_unavailable",
         expected_service="payment-service",
         symptom=PromCondition(_error_rate("order-service"), above=0.5),
     ),
-    Scenario(
+    IncidentCase(
         name="db-down",
         question="Checkout errors started a few minutes ago. What is going on?",
         expected_category="dependency_unavailable",
         expected_service="payments-db",
         symptom=PromCondition(_error_rate("payment-service"), above=0.5),
     ),
-    Scenario(
+    IncidentCase(
         name="bad-deploy",
         question="Orders have been failing since the latest release. Please investigate.",
         expected_category="bad_deployment",
         expected_service="payment-service",
         symptom=PromCondition(_error_rate("payment-service"), above=0.5),
     ),
-    Scenario(
+    IncidentCase(
         name="crash-loop",
         question="Orders are failing. Investigate.",
         expected_category="crash_loop",
         expected_service="payment-service",
         symptom=PodCondition(app="payment-service", min_restarts=2),
     ),
-    Scenario(
+    IncidentCase(
         name="high-cpu",
         question="Checkout has become very slow. What's wrong?",
         expected_category="resource_exhaustion",
         expected_service="user-service",
         symptom=PromCondition(_p99_ms("user-service"), above=1000),
     ),
-    Scenario(
+    IncidentCase(
         name="slow-payments",
         question="Placing an order takes several seconds now. Why?",
         expected_category="slow_dependency",
@@ -84,7 +84,7 @@ SCENARIOS: list[Scenario] = [
     ),
 ]
 
-# The cluster counts as healthy again (safe to start the next scenario) when all of these hold.
+# The cluster counts as healthy again (safe to start the next incident) when all of these hold.
 # `bool` makes a comparison return 1/0 instead of filtering, so a healthy 0.0 still counts.
 HEALTHY: list[PromCondition] = [
     PromCondition(f"{_error_rate(service)} < bool 0.02", above=0.5) for service in ("order-service", "payment-service")

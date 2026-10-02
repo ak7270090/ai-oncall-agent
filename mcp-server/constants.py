@@ -1,6 +1,6 @@
 """Fixed values of the MCP server. Anything an operator may want to tune per
 environment (URLs, timeouts, allowed namespaces, rate windows) lives in
-config/settings.py instead. Fake incident data lives in data/fake_cluster.py."""
+config/settings.py instead. Fake incident data lives in fake/incident_data.py."""
 
 from typing import Literal
 

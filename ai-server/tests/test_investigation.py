@@ -22,8 +22,8 @@ EXPECTED_STEPS = [Step.EXTRACT_INCIDENT_SCOPE, Step.COLLECT_NAMESPACE_OVERVIEW, 
                   Step.TRACE_FAILING_DEPENDENCIES, Step.FIND_ROOT_CAUSE, Step.WRITE_REPORT]
 
 
-async def investigate(chat_model, scenario=PAYMENT_DOWN, with_metrics=True):
-    async with fake_connector(build_fake_mcp_server(scenario, with_metrics))() as mcp_client:
+async def investigate(chat_model, incident=PAYMENT_DOWN, with_metrics=True):
+    async with fake_connector(build_fake_mcp_server(incident, with_metrics))() as mcp_client:
         tools = await list_all_tools(mcp_client)
         graph = build_investigation_graph(
             chat_model, MCPToolbox(mcp_client, tools), [to_langchain_tool(mcp_client, t) for t in tools], SETTINGS
@@ -67,7 +67,7 @@ async def test_upstream_named_in_logs_is_investigated():
 
 
 async def test_crash_looping_pod_gets_previous_logs_and_rollout_history():
-    result = await investigate(scripted_model(), scenario=PAYMENT_CRASHLOOP)
+    result = await investigate(scripted_model(), incident=PAYMENT_CRASHLOOP)
     logs = [e for e in calls(result, "get_pod_logs", Step.INSPECT_FLAGGED_PROBLEMS) if e.arguments["pod"] == "payment-service-x"]
     assert logs[0].arguments["previous"] is True
     assert "exit code 1" in logs[0].result["lines"]
@@ -81,8 +81,8 @@ async def test_missing_metrics_tools_are_skipped_not_fatal():
 
 
 async def test_tool_errors_are_kept_as_evidence():
-    scenario = {**PAYMENT_CRASHLOOP, "previous_logs": {}}
-    result = await investigate(scripted_model(), scenario=scenario)
+    incident = {**PAYMENT_CRASHLOOP, "previous_logs": {}}
+    result = await investigate(scripted_model(), incident=incident)
     failed = [e for e in calls(result, "get_pod_logs") if e.error]
     assert failed and "no previous" in failed[0].error
 
@@ -118,10 +118,10 @@ def test_upstream_detection_finds_non_http_dependencies_but_not_the_pods_own_ser
 
 
 async def test_slow_service_gets_latency_cpu_and_pod_limits():
-    scenario = {**PAYMENT_DOWN, "overview": [
+    incident = {**PAYMENT_DOWN, "overview": [
         {"service": "user-service", "request_rate_per_second": 1.0, "error_rate": 0.0, "latency_p99_ms": 2500},
     ]}
-    result = await investigate(scripted_model(), scenario=scenario)
+    result = await investigate(scripted_model(), incident=incident)
     metrics = {e.arguments["metric"] for e in calls(result, "get_metrics", Step.INSPECT_FLAGGED_PROBLEMS)}
     assert {"latency_p99_ms", "cpu_cores"} <= metrics
     assert calls(result, "get_pod_status", Step.INSPECT_FLAGGED_PROBLEMS)[0].arguments["pod"] == "user-service-a"
