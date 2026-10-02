@@ -1,19 +1,19 @@
 """The steps of an investigation, one method each. Every step receives the whole
-InvestigationState and returns only the keys it changes (see agent/state.py).
-agent/graph.py wires these methods into the LangGraph flow."""
+InvestigationState and returns only the keys it changes (see agent/workflow/state.py).
+agent/workflow/graph.py wires these methods into the LangGraph flow."""
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
 
-from agent import evidence_collection
-from agent.chat_model import invoke_llm
-from agent.evidence_collection import CollectionLimits
+from agent.evidence import collection as evidence_collection
+from agent.evidence.collection import CollectionLimits
+from agent.evidence.toolbox import MCPToolbox, evidence_from_tool_messages
+from agent.llm.chat_model import invoke_llm
+from agent.llm.prompts import report_messages, root_cause_messages, scope_messages
 from agent.models import IncidentReport, IncidentScope
-from agent.prompts import report_messages, root_cause_messages, scope_messages
-from agent.state import InvestigationState
-from agent.toolbox import MCPToolbox, evidence_from_tool_messages
+from agent.workflow.state import InvestigationState
 from config import Settings
 from constants import Step
 

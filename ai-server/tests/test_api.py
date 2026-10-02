@@ -9,7 +9,12 @@ from config import Settings, get_settings
 from constants import LLM_FAILURE_MESSAGE, Step
 from main import app
 from mcp_client import connect_to_mcp
-from tests.fakes import PAYMENT_DOWN, build_fake_mcp_server, fake_connector, scripted_model
+from tests.fakes import (
+    PAYMENT_DOWN,
+    build_fake_mcp_server,
+    fake_connector,
+    scripted_model,
+)
 
 UNREACHABLE_MCP_URL = "http://127.0.0.1:9/mcp"
 

@@ -1,4 +1,4 @@
-r"""Wires the investigation steps (agent/nodes.py) into a LangGraph flow:
+r"""Wires the investigation steps (agent/workflow/nodes.py) into a LangGraph flow:
 
     START → extract_incident_scope → collect_namespace_overview → inspect_flagged_problems
           → trace_failing_dependencies → find_root_cause ⇄ run_requested_tools
@@ -13,9 +13,9 @@ from langchain_core.tools import BaseTool
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from agent.nodes import InvestigationNodes
-from agent.state import InvestigationState
-from agent.toolbox import MCPToolbox
+from agent.evidence.toolbox import MCPToolbox
+from agent.workflow.nodes import InvestigationNodes
+from agent.workflow.state import InvestigationState
 from config import Settings
 from constants import Step
 

@@ -1,9 +1,9 @@
 import pytest
 
 from agent import Evidence, MCPToolbox, build_investigation_graph, run_investigation
+from agent.evidence.signals import services_blamed_in_logs, without_stale_pod_events
 from agent.investigation import reanalyze_evidence
 from agent.report import render_markdown
-from agent.signals import services_blamed_in_logs, without_stale_pod_events
 from config import Settings
 from constants import Step
 from mcp_client import list_all_tools, to_langchain_tool

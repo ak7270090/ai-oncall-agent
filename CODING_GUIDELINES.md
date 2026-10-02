@@ -37,7 +37,7 @@ message.
 ## 3. LLM access is provider-agnostic
 
 - App code never imports `openai`, `anthropic` or any other provider SDK.
-- Chat models are built only through `agent/chat_model.py::create_chat_model`
+- Chat models are built only through `agent/llm/chat_model.py::create_chat_model`
   (LangChain `init_chat_model`). To switch provider or model, change `LLM_MODEL`
   (`"<provider>:<model>"`) and `LLM_API_KEY`. No code changes.
 - Orchestration uses LangGraph. Tools reach the LLM as LangChain tools built
@@ -57,6 +57,11 @@ message.
 - One responsibility per module. Keep HTTP routes (`api/routes.py`), request and
   response schemas (`api/schemas.py`), dependency wiring (`api/dependencies.py`),
   domain logic (`agent/`, `mcp_client/`) and config (`config/`) separate.
+- When a package grows past a handful of files, split it into subpackages by
+  job, e.g. `agent/workflow/` (graph, steps, state), `agent/evidence/` (tool calls
+  and rules), `agent/llm/` (chat model, prompts). Shared types (`agent/models.py`)
+  and the entry point stay at the top. Keep subpackage `__init__.py` files empty;
+  the top-level `agent/__init__.py` exports the public API.
 - Build objects in factory functions (`create_app`, `create_server`,
   `create_chat_model`, `build_investigation_graph`) so tests can build their own.
 - Group MCP tools by domain (`tools/kubernetes.py`, `tools/observability.py`).
@@ -78,13 +83,13 @@ message.
 - Name functions after their purpose in the domain, not a metaphor:
   `collect_namespace_overview`, not `sweep`. A reader should know what a function
   does without opening it.
-- Group small pure functions by what they're about (`agent/signals.py`: problem
+- Group small pure functions by what they're about (`agent/evidence/signals.py`: problem
   signals in evidence), never in a catch-all `helpers.py`/`utils.py`.
 - Avoid functions defined inside functions. Prefer a class whose methods share
   dependencies (`InvestigationNodes`). Exception: MCP tool factories
   (`build_kubernetes_tools`) use closures because each tool's JSON Schema
   (defaults, allowed namespaces) is built from settings at startup.
-- Keep state shapes in their own module (`agent/state.py`), next to a constructor for
+- Keep state shapes in their own module (`agent/workflow/state.py`), next to a constructor for
   the initial state.
 
 ## 7. Comments and docstrings
@@ -205,7 +210,7 @@ message.
 ## 16. Investigation graph (AI server)
 
 - Evidence gathering that should always happen goes in deterministic graph
-  steps (`agent/evidence_collection.py`), not in the prompt. The LLM understands the
+  steps (`agent/evidence/collection.py`), not in the prompt. The LLM understands the
   question, reasons over evidence and writes the report. It doesn't decide the
   basic checks.
 - LLM outputs that code consumes are typed with `with_structured_output(Model)`
@@ -217,7 +222,7 @@ message.
 - A missing MCP tool degrades the investigation (step skipped and noted); it
   never breaks it.
 - The graph depends on MCP tool names and result fields. Change them in
-  `mcp-server` only together with `constants.py` (`McpTool`), `agent/evidence_collection.py`
+  `mcp-server` only together with `constants.py` (`McpTool`), `agent/evidence/collection.py`
   and `tests/fakes.py`.
 
 ## 17. Scenarios and evals

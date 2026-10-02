@@ -33,9 +33,10 @@ ai-oncall-agent/
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
 │   ├── api/                   routes, schemas, dependencies
-│   ├── agent/                 graph.py (wiring), nodes.py (the steps), state.py, evidence_collection.py
-│   │                          (deterministic checks), signals.py (problem-detection rules),
-│   │                          toolbox.py, models.py, prompts.py, report.py, chat_model.py
+│   ├── agent/                 investigation.py (entry point), models.py, report.py (Markdown)
+│   │   ├── workflow/          graph.py (wiring), nodes.py (the steps), state.py
+│   │   ├── evidence/          collection.py (deterministic checks), signals.py (rules), toolbox.py
+│   │   └── llm/               chat_model.py (provider-agnostic), prompts.py
 │   ├── mcp_client/            connection.py, tools.py (MCP → LangChain adapter)
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
@@ -361,12 +362,12 @@ START → extract_incident_scope → collect_namespace_overview → inspect_flag
                                                    └──→ write_report → END
 ```
 
-Code layout (`ai-server/agent/`): `graph.py` only wires the flow; each step is a
-method of `InvestigationNodes` in `nodes.py`; the state passed between steps is
-`InvestigationState` in `state.py`; the collection steps are in
-`evidence_collection.py` and the rules they use (unhealthy pods, failing or slow
-services…) in `signals.py`. Step names, MCP tool names and other fixed values are
-in `ai-server/constants.py`.
+Code layout (`ai-server/agent/`): `workflow/graph.py` only wires the flow; each
+step is a method of `InvestigationNodes` in `workflow/nodes.py`; the state passed
+between steps is `InvestigationState` in `workflow/state.py`; the collection steps
+are in `evidence/collection.py` and the rules they use (unhealthy pods, failing or
+slow services…) in `evidence/signals.py`; LLM setup and prompts are in `llm/`.
+Step names, MCP tool names and other fixed values are in `ai-server/constants.py`.
 
 | Step | Who | What |
 | --- | --- | --- |
