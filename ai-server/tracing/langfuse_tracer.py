@@ -8,6 +8,7 @@ the same callbacks (agent/evidence/mcp_toolbox.py), so nothing else depends on L
 Without Langfuse keys the tracer is disabled and does nothing."""
 
 import logging
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -21,12 +22,27 @@ from langfuse import (
     propagate_attributes,
 )
 from langfuse.langchain import CallbackHandler
+from langfuse.types import TraceContext
+from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.trace import ReadableSpan
 
 from config import Settings
-from constants import INVESTIGATION_TRACE_NAME, MCP_SDK_TRACER_NAME
+from constants import INVESTIGATION_TRACE_NAME, MCP_SDK_TRACER_NAME, TRACEPARENT_PATTERN
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TraceLabels:
+    """Optional tags for filtering traces in Langfuse (e.g. eval, incident:db-down), and
+    an optional W3C `traceparent` of the caller's span: the investigation is then
+    recorded inside the caller's trace (an eval experiment item)."""
+
+    tags: tuple[str, ...] = ()
+    traceparent: str | None = None
+
+
+NO_LABELS = TraceLabels()
 
 
 @dataclass
@@ -55,14 +71,19 @@ class InvestigationTracer:
         return self._client is not None
 
     @contextmanager
-    def trace_investigation(self, question: str) -> Iterator[InvestigationTrace]:
+    def trace_investigation(self, question: str, labels: TraceLabels = NO_LABELS) -> Iterator[InvestigationTrace]:
         if self._client is None:
             yield InvestigationTrace()
             return
+        parent = _parse_traceparent(labels.traceparent)
+        # Inside someone else's trace (an eval experiment), that trace keeps its own name.
+        nested = parent is not None or otel_trace.get_current_span().get_span_context().is_valid
         with (
             self._client.start_as_current_observation(
-                name=INVESTIGATION_TRACE_NAME, as_type="agent", input={"question": question}) as root_span,
-            propagate_attributes(trace_name=INVESTIGATION_TRACE_NAME, metadata=self._trace_metadata),
+                trace_context=parent, name=INVESTIGATION_TRACE_NAME, as_type="agent",
+                input={"question": question}) as root_span,
+            propagate_attributes(trace_name=None if nested else INVESTIGATION_TRACE_NAME,
+                                 metadata=self._trace_metadata, tags=list(labels.tags) or None),
         ):
             trace_id = self._client.get_current_trace_id()
             yield InvestigationTrace(
@@ -89,6 +110,13 @@ class InvestigationTracer:
 
 
 DISABLED_TRACER = InvestigationTracer()
+
+
+def _parse_traceparent(traceparent: str | None) -> TraceContext | None:
+    match = re.fullmatch(TRACEPARENT_PATTERN, traceparent.strip().lower()) if traceparent else None
+    if match is None:
+        return None
+    return TraceContext(trace_id=match["trace_id"], parent_span_id=match["span_id"])
 
 
 def should_export_span(span: ReadableSpan) -> bool:

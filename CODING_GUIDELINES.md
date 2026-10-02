@@ -302,4 +302,10 @@ message.
 - Tracing must never fail or slow down an investigation: no keys means a no-op tracer,
   and a call to the tracing backend that can fail is caught and logged.
 - Tests never send traces: they run without keys or use an in-memory span exporter.
+- A trace that continues a caller's work (an eval experiment item calling the AI server)
+  is joined with the W3C `traceparent` header, never with custom ids.
+- Eval and replay runs are recorded with Langfuse's experiment runner
+  (`evals/experiment_tracking.py`), scored by plain functions (`score_correctness`), so
+  runs can be compared. Use Langfuse's v2/experiments APIs; the legacy trace and
+  dataset-run APIs are not available to new Langfuse organizations.
 - Don't put secrets in span inputs, outputs or metadata.

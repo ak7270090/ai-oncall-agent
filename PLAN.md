@@ -40,8 +40,8 @@ User ──► ai-server (FastAPI + LangGraph + LLM + MCP client)
 | --- | --- | --- | --- |
 | 10 | LLM observability | Metrics for the AI server and MCP server | Skipped (Langfuse dashboards cover it) |
 | 11 | LLM observability | Tracing of every investigation (LLM calls, tool calls, tokens, cost) | Done (Langfuse Cloud) |
-| 12 | LLM observability | Quality tracking: eval results and traces side by side | Next |
-| 13 | Advanced MCP | Resources | Not started |
+| 12 | LLM observability | Quality tracking: eval results and traces side by side | Done (no LLM-as-judge) |
+| 13 | Advanced MCP | Resources | Next |
 | 14 | Advanced MCP | Prompts | Not started |
 | 15 | Advanced MCP | Progress, logging and cancellation | Not started |
 | 16 | Advanced MCP | Completions and tool annotations | Not started |
@@ -123,7 +123,13 @@ call as a nested span, with inputs, outputs, timings and token counts. Metrics s
 **Done when:** you can open any investigation, see every prompt the LLM got and
 every tool result, and the tool spans from mcp-server sit inside it.
 
-### Phase 12 — Quality tracking
+### Phase 12 — Quality tracking (done)
+
+Built: `evals/experiment_tracking.py`; eval and replay runs are Langfuse experiments
+on the `oncall-incidents` dataset, scored per case; the AI server joins the eval's
+trace through `traceparent`. README "Comparing runs in Langfuse". LLM-as-judge left
+out for now.
+
 
 **What:** measuring whether answers are *right*, not just fast. LLM output varies
 between runs, so quality has to be tracked over time.
@@ -362,8 +368,8 @@ item.
 Give Claude Code **one phase at a time**, so the codebase stays understandable and
 you learn from each step. Example:
 
-> "Implement Phase 12 only. Link eval and replay runs to their Langfuse traces
-> as described in PLAN.md. Don't start Phase 13. Follow
+> "Implement Phase 13 only. Add MCP resources (runbooks, topology, deployment
+> specs) as described in PLAN.md. Don't start Phase 14. Follow
 > CODING_GUIDELINES.md, run all tests, and update README."
 
 Review each phase's output before moving to the next. See

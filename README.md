@@ -43,7 +43,8 @@ ai-oncall-agent/
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
 ├── kubernetes/            base/ (healthy system, ns shop), incidents/ (incident overlays), monitoring/ (Prometheus)
-├── evals/                 incident eval: incident_cases.py (expected answers), run_eval.py
+├── evals/                 incident eval: incident_cases.py (expected answers), run_eval.py, replay.py,
+│                          experiment_tracking.py (Langfuse experiments)
 ├── docker-compose.yml     AI server + MCP server (fake data)
 ├── docker-compose.kind.yml  overlay: MCP server reads the kind cluster
 ├── Makefile               every command: make help
@@ -336,6 +337,32 @@ one full `make eval`.
 symptoms show up, and clear, within seconds rather than minutes. The eval waits
 20s after a symptom appears (like an alert's `for:`) before asking the agent.
 
+## Comparing runs in Langfuse (Phase 12)
+
+With Langfuse keys in `ai-server/.env`, every `make eval` and `make replay` run is
+recorded as a Langfuse **experiment** (`evals/experiment_tracking.py`):
+
+- The six incident cases are a dataset, `oncall-incidents` (question + expected
+  `cause_category` and `root_cause_service`), created or updated on each run.
+- A run is named after what produced it, e.g.
+  `eval: openai:gpt-5.4-mini @ 40f7795 (2026-10-02 18:30)` (`-dirty` if there were
+  uncommitted changes). `make replay TIMES=3` records three runs (`#1`–`#3`).
+- Each case is one experiment item, with scores: `correct`, `category_correct`,
+  `service_correct` (1/0) and the agent's `confidence`.
+- The full investigation is inside the item's trace. For replay the reasoning runs in
+  the same process. For eval the AI server is a separate process: the eval sends the
+  W3C `traceparent` header with `/investigate`, and the AI server records its trace
+  as a child of the experiment item (distributed tracing).
+- Traces are also tagged `eval` / `replay` and `incident:<name>`.
+
+**To compare models or prompts:** run `make eval` (or `make replay`), change
+`LLM_MODEL` or the prompt, run again, then open **Datasets → oncall-incidents →
+Experiments** in Langfuse and compare the runs side by side: pass rate, cost and
+latency, per incident.
+
+Without keys, eval and replay work exactly as before. A Langfuse error is printed
+and never stops a run.
+
 ## Tracing with Langfuse (Phase 11)
 
 Every investigation can be recorded as one **trace** in [Langfuse](https://langfuse.com):
@@ -363,7 +390,9 @@ LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or https://us.cloud.langfuse.co
 ```
 
 Without keys tracing is off. `/investigate` returns `trace_id` and `trace_url`
-(a direct link to the trace).
+(a direct link to the trace). Optional request fields: `trace_tags` (e.g.
+`["incident:db-down"]`), and a W3C `traceparent` header to record the
+investigation inside the caller's trace.
 
 How it works (`ai-server/tracing/langfuse_tracer.py`):
 

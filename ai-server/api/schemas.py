@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from agent import IncidentReport, IncidentScope
 from config import get_settings
+from constants import MAX_TRACE_TAGS
 
 
 class InvestigateRequest(BaseModel):
@@ -14,6 +15,8 @@ class InvestigateRequest(BaseModel):
     )
     include_evidence_results: bool = Field(
         default=False, description="Also return raw tool output per check (large; for debugging and evals)")
+    trace_tags: list[str] = Field(
+        default=[], max_length=MAX_TRACE_TAGS, description="Tags for this investigation's trace, e.g. incident:db-down")
 
 
 class EvidenceResponse(BaseModel):
@@ -36,6 +39,7 @@ class InvestigateResponse(BaseModel):
     steps: list[str]
     llm_calls: int
     follow_up_limit_reached: bool
+    llm_model: str = Field(description="The LLM_MODEL that produced this report")
     trace_id: str | None = Field(default=None, description="Langfuse trace id; null when tracing is off")
     trace_url: str | None = Field(default=None, description="Link to this investigation in Langfuse")
 

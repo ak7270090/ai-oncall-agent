@@ -2,14 +2,16 @@
 
 Needs: kind cluster up (`make cluster-up`), MCP server and AI server running.
 For every incident: inject -> wait for the symptom -> POST /investigate -> grade -> reset
--> wait until healthy. Results are printed and saved to evals/results/<timestamp>.json.
-Standard library only, so it runs with any Python 3.11+.
+-> wait until healthy. Results are printed and saved to evals/results/<timestamp>.json,
+and recorded in Langfuse as an experiment run when ai-server/.env has Langfuse keys
+(see experiment_tracking.py). Runs with the ai-server virtualenv (`make eval`).
 """
 
 import argparse
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -17,7 +19,16 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-from incident_cases import (
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "ai-server"))
+
+from experiment_tracking import (  # noqa: E402
+    ExperimentTracker,
+    current_traceparent,
+    normalized_service,
+    use_safe_event_loop,
+)
+from incident_cases import (  # noqa: E402
     HEALTHY,
     INCIDENT_CASES,
     IncidentCase,
@@ -25,7 +36,6 @@ from incident_cases import (
     PromCondition,
 )
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 AI_SERVER_URL = os.environ.get("EVAL_AI_SERVER_URL", "http://127.0.0.1:8000")
 PROMETHEUS_URL = os.environ.get("EVAL_PROMETHEUS_URL", "http://127.0.0.1:9090")
@@ -57,9 +67,9 @@ def kubectl(*args: str) -> str:
     return subprocess.run(["kubectl", *args], check=True, capture_output=True, text=True).stdout
 
 
-def request_json(url: str, body: dict | None = None, timeout: float = 30) -> dict:
+def request_json(url: str, body: dict | None = None, timeout: float = 30, headers: dict | None = None) -> dict:
     data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(url, data=data, headers={"content-type": "application/json"})
+    request = urllib.request.Request(url, data=data, headers={"content-type": "application/json", **(headers or {})})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.load(response)
 
@@ -95,12 +105,19 @@ def reset_and_wait_healthy() -> None:
 
 def grade(incident: IncidentCase, report: dict) -> tuple[bool, str]:
     category = report.get("cause_category")
-    service = (report.get("root_cause_service") or "").strip().lower()
+    service = normalized_service(report)
     passed = category == incident.expected_category and service == incident.expected_service
     return passed, f"{category} / {service or '-'}"
 
 
-def run_incident(incident: IncidentCase) -> Result:
+def investigate(incident: IncidentCase, tracker: ExperimentTracker) -> dict:
+    traceparent = current_traceparent()
+    return request_json(f"{AI_SERVER_URL}/investigate", {
+        "question": incident.question, "include_evidence_results": True, "trace_tags": tracker.trace_tags(incident),
+    }, INVESTIGATE_TIMEOUT_SECONDS, headers={"traceparent": traceparent} if traceparent else None)
+
+
+def run_incident(incident: IncidentCase, tracker: ExperimentTracker) -> Result:
     expected = f"{incident.expected_category} / {incident.expected_service}"
     started = time.monotonic()
     try:
@@ -108,8 +125,7 @@ def run_incident(incident: IncidentCase) -> Result:
         wait_until(lambda: is_condition_met(incident.symptom), SYMPTOM_TIMEOUT_SECONDS, f"{incident.name} symptom")
         time.sleep(SYMPTOM_SETTLE_SECONDS)
         started = time.monotonic()
-        body = request_json(f"{AI_SERVER_URL}/investigate",
-                         {"question": incident.question, "include_evidence_results": True}, INVESTIGATE_TIMEOUT_SECONDS)
+        body = tracker.run_case(incident, lambda: investigate(incident, tracker))
         report = body["report"]
         passed, got = grade(incident, report)
         return Result(incident.name, passed, expected, got, report.get("confidence"), body.get("llm_calls"),
@@ -139,12 +155,14 @@ def main() -> None:
         raise SystemExit(f"no such incident; choose from: {', '.join(s.name for s in INCIDENT_CASES)}")
 
     request_json(f"{AI_SERVER_URL}/ready")
+    tracker = ExperimentTracker("eval")
+    tracker.register_cases(selected)
     print("Preparing a healthy cluster...", flush=True)
     reset_and_wait_healthy()
     results = []
     for incident in selected:
         print(f"== {incident.name}", flush=True)
-        results.append(run_incident(incident))
+        results.append(run_incident(incident, tracker))
         print(f"   {'PASS' if results[-1].passed else 'FAIL'}: {results[-1].got}", flush=True)
         try:
             reset_and_wait_healthy()
@@ -153,6 +171,7 @@ def main() -> None:
             print(f"   cluster did not recover after {incident.name}: {error!r}; stopping", flush=True)
             break
     print_table(results)
+    tracker.flush()
 
     RESULTS_DIR.mkdir(exist_ok=True)
     path = RESULTS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}.json"
@@ -161,4 +180,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    use_safe_event_loop()
     main()

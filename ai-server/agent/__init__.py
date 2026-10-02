@@ -15,6 +15,7 @@ __all__ = [
     "InvestigationResult",
     "LLMError",
     "MCPToolbox",
+    "ReanalysisResult",
     "build_investigation_graph",
     "create_chat_model",
     "reanalyze_evidence",

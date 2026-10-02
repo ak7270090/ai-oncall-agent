@@ -156,9 +156,10 @@ async def test_saved_evidence_can_be_reanalysed_without_tools():
     from tests.fakes import ScriptedChatModel, scope
     model = ScriptedChatModel(messages=iter(["payment-service is down"]), structured_replies=[report()])
     evidence = [Evidence(source="list_pods", arguments={}, step=Step.COLLECT_NAMESPACE_OVERVIEW, result={"pods": []})]
-    analysis, final = await reanalyze_evidence(model, "Checkout failing", scope(), "shop", evidence, [])
-    assert analysis == "payment-service is down"
-    assert final.root_cause_service == "payment-service"
+    result = await reanalyze_evidence(model, "Checkout failing", scope(), "shop", evidence, [])
+    assert result.analysis == "payment-service is down"
+    assert result.report.root_cause_service == "payment-service"
+    assert result.trace_id is None
 
 
 def test_slow_call_log_lines_point_at_the_dependency():

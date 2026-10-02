@@ -128,7 +128,7 @@ incident-reset:
 	kubectl wait deployment --all -n $(NAMESPACE) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
 
 eval:
-	cd evals && $(PYTHON) run_eval.py $(if $(NAME),--only $(NAME))
+	cd ai-server && .venv/$(VENV_BIN)/python ../evals/run_eval.py $(if $(NAME),--only $(NAME))
 
 replay:
 	cd ai-server && .venv/$(VENV_BIN)/python ../evals/replay.py $(if $(RUN),--run ../$(RUN)) $(if $(NAME),--only $(NAME)) $(if $(TIMES),--times $(TIMES))
