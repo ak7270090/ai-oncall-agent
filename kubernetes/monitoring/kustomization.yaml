@@ -5,10 +5,10 @@ namespace: monitoring
 
 resources:
   - namespace.yaml
-  - prometheus.yaml
+  - prometheus-deployment.yaml
   - rbac.yaml
 
 configMapGenerator:
   - name: prometheus-config
     files:
-      - prometheus.yml
+      - prometheus.yml=scrape-config.yml   # key = file name Prometheus reads

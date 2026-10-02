@@ -1,6 +1,6 @@
 from config import Settings
-from observability.backend import MetricsBackend, MetricsError
 from fake.metrics_backend import FakeMetricsBackend
+from observability.backend import MetricsBackend, MetricsError
 from observability.prometheus_backend import PrometheusBackend
 
 

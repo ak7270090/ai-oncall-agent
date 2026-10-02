@@ -17,7 +17,13 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-from incident_cases import HEALTHY, INCIDENT_CASES, IncidentCase, PodCondition, PromCondition
+from incident_cases import (
+    HEALTHY,
+    INCIDENT_CASES,
+    IncidentCase,
+    PodCondition,
+    PromCondition,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -51,22 +57,22 @@ def kubectl(*args: str) -> str:
     return subprocess.run(["kubectl", *args], check=True, capture_output=True, text=True).stdout
 
 
-def http_json(url: str, body: dict | None = None, timeout: float = 30) -> dict:
+def request_json(url: str, body: dict | None = None, timeout: float = 30) -> dict:
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(url, data=data, headers={"content-type": "application/json"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.load(response)
 
 
-def prometheus_value(query: str) -> float | None:
+def query_prometheus(query: str) -> float | None:
     url = f"{PROMETHEUS_URL}/api/v1/query?{urllib.parse.urlencode({'query': query})}"
-    result = http_json(url)["data"]["result"]
+    result = request_json(url)["data"]["result"]
     return float(result[0]["value"][1]) if result else None
 
 
-def holds(condition: PromCondition | PodCondition) -> bool:
+def is_condition_met(condition: PromCondition | PodCondition) -> bool:
     if isinstance(condition, PromCondition):
-        value = prometheus_value(condition.query)
+        value = query_prometheus(condition.query)
         return value is not None and value > condition.above
     pods = json.loads(kubectl("get", "pods", "-n", NAMESPACE, "-l", f"app={condition.app}", "-o", "json"))["items"]
     restarts = [sum(c.get("restartCount", 0) for c in p["status"].get("containerStatuses", [])) for p in pods]
@@ -84,7 +90,7 @@ def wait_until(check, timeout: float, what: str) -> None:
 def reset_and_wait_healthy() -> None:
     kubectl("apply", "-k", str(REPO_ROOT / "kubernetes" / "base"))
     kubectl("wait", "deployment", "--all", "-n", NAMESPACE, "--for=condition=Available", "--timeout=300s")
-    wait_until(lambda: all(holds(c) for c in HEALTHY), HEALTHY_TIMEOUT_SECONDS, "a healthy cluster")
+    wait_until(lambda: all(is_condition_met(c) for c in HEALTHY), HEALTHY_TIMEOUT_SECONDS, "a healthy cluster")
 
 
 def grade(incident: IncidentCase, report: dict) -> tuple[bool, str]:
@@ -99,10 +105,10 @@ def run_incident(incident: IncidentCase) -> Result:
     started = time.monotonic()
     try:
         kubectl("apply", "-k", str(REPO_ROOT / "kubernetes" / "incidents" / incident.name))
-        wait_until(lambda: holds(incident.symptom), SYMPTOM_TIMEOUT_SECONDS, f"{incident.name} symptom")
+        wait_until(lambda: is_condition_met(incident.symptom), SYMPTOM_TIMEOUT_SECONDS, f"{incident.name} symptom")
         time.sleep(SYMPTOM_SETTLE_SECONDS)
         started = time.monotonic()
-        body = http_json(f"{AI_SERVER_URL}/investigate",
+        body = request_json(f"{AI_SERVER_URL}/investigate",
                          {"question": incident.question, "include_evidence_results": True}, INVESTIGATE_TIMEOUT_SECONDS)
         report = body["report"]
         passed, got = grade(incident, report)
@@ -132,7 +138,7 @@ def main() -> None:
     if not selected:
         raise SystemExit(f"no such incident; choose from: {', '.join(s.name for s in INCIDENT_CASES)}")
 
-    http_json(f"{AI_SERVER_URL}/ready")
+    request_json(f"{AI_SERVER_URL}/ready")
     print("Preparing a healthy cluster...", flush=True)
     reset_and_wait_healthy()
     results = []

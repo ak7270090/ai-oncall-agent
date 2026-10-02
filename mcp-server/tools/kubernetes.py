@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from typing import Annotated
 
+from pydantic import Field
+
 from cluster import ClusterBackend
 from cluster.models import (
     DeploymentDetail,
@@ -11,8 +13,6 @@ from cluster.models import (
     PodLogs,
     summarize_pod,
 )
-from pydantic import Field
-
 from config import Settings
 from constants import (
     DEFAULT_EVENT_LIMIT,

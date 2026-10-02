@@ -10,7 +10,6 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
-
 from settings import get_settings
 
 
@@ -65,7 +64,7 @@ def get_http_client(request: Request) -> httpx2.AsyncClient:
 HttpClientDep = Annotated[httpx2.AsyncClient, Depends(get_http_client)]
 
 
-def upstream_failure(message: str) -> HTTPException:
+def build_upstream_failure(message: str) -> HTTPException:
     logger.error(message)
     return HTTPException(status.HTTP_502_BAD_GATEWAY, message)
 
@@ -75,14 +74,14 @@ async def call_downstream(http_client: httpx2.AsyncClient, method: str, url: str
     try:
         response = await http_client.request(method, url, **kwargs)
     except httpx2.HTTPError as error:
-        raise upstream_failure(f"upstream unavailable: {method} {url} ({error!r})")
+        raise build_upstream_failure(f"upstream unavailable: {method} {url} ({error!r})")
     elapsed = time.monotonic() - started
     if elapsed >= settings.slow_call_warning_seconds:
         logger.warning(f"slow upstream call: {method} {url} took {elapsed:.2f}s")
     if response.status_code == status.HTTP_404_NOT_FOUND:
         raise HTTPException(status.HTTP_404_NOT_FOUND, response.json().get("detail", "not found"))
     if response.is_error:
-        raise upstream_failure(f"upstream error {response.status_code}: {method} {url}")
+        raise build_upstream_failure(f"upstream error {response.status_code}: {method} {url}")
     return response.json()
 
 

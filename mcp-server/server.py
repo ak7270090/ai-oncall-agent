@@ -27,7 +27,7 @@ def create_server(
     return server
 
 
-def transport_security(settings: Settings) -> TransportSecuritySettings | None:
+def build_transport_security(settings: Settings) -> TransportSecuritySettings | None:
     if not settings.allowed_hosts:
         return None
     return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=settings.allowed_hosts)
@@ -46,7 +46,7 @@ def main() -> None:
             host=settings.host,
             port=settings.port,
             streamable_http_path=settings.path,
-            transport_security=transport_security(settings),
+            transport_security=build_transport_security(settings),
         )
 
 

@@ -1,9 +1,8 @@
 from collections.abc import Callable
 
 from cluster import ClusterBackend
-from observability import MetricsBackend
-
 from config import Settings
+from observability import MetricsBackend
 from tools.kubernetes import build_kubernetes_tools
 from tools.observability import build_observability_tools
 

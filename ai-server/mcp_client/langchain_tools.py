@@ -3,7 +3,7 @@ from mcp import Client
 from mcp.types import CallToolResult, TextContent, Tool
 
 
-def result_text(result: CallToolResult) -> str:
+def extract_result_text(result: CallToolResult) -> str:
     return "\n".join(block.text for block in result.content if isinstance(block, TextContent))
 
 
@@ -22,8 +22,8 @@ def to_langchain_tool(mcp_client: Client, tool: Tool) -> StructuredTool:
     async def call_mcp_tool(**arguments) -> str:
         result = await mcp_client.call_tool(tool.name, arguments)
         if result.is_error:
-            raise ToolException(result_text(result))
-        return result_text(result)
+            raise ToolException(extract_result_text(result))
+        return extract_result_text(result)
 
     return StructuredTool.from_function(
         coroutine=call_mcp_tool,

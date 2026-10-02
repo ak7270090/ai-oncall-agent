@@ -56,7 +56,7 @@ class PrometheusBackend:
         ]
 
     def service_overview(self, namespace: str) -> list[ServiceHealth]:
-        values: dict[str, dict[str, float | None]] = {}
+        values: dict[str, dict[Metric, float | None]] = {}
         for metric in SERVICE_OVERVIEW_METRICS:
             query = build_query(metric, namespace, None, self._window, group_by=("service",))
             for series in self._get("/api/v1/query", {"query": query}):
@@ -65,10 +65,10 @@ class PrometheusBackend:
         return [
             ServiceHealth(
                 service=service,
-                request_rate_per_second=metrics.get("request_rate"),
+                request_rate_per_second=metrics.get(Metric.REQUEST_RATE),
                 # Requests but no 5xx series means no errors.
-                error_rate=metrics.get("error_rate", 0.0 if metrics.get("request_rate") else None),
-                latency_p99_ms=metrics.get("latency_p99_ms"),
+                error_rate=metrics.get(Metric.ERROR_RATE, 0.0 if metrics.get(Metric.REQUEST_RATE) else None),
+                latency_p99_ms=metrics.get(Metric.LATENCY_P99_MS),
             )
             for service, metrics in sorted(values.items())
         ]

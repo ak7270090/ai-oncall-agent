@@ -37,7 +37,7 @@ ai-oncall-agent/
 │   │   ├── workflow/          graph.py (wiring), nodes.py (the steps), state.py
 │   │   ├── evidence/          collection_steps.py (deterministic checks), helpers.py (rules), mcp_toolbox.py
 │   │   └── llm/               chat_model.py (provider-agnostic), prompts.py
-│   ├── mcp_client/            connection.py, tools.py (MCP → LangChain adapter)
+│   ├── mcp_client/            connection.py, langchain_tools.py (MCP → LangChain adapter)
 │   ├── config/settings.py
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
@@ -404,7 +404,7 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Concept | Where |
 | --- | --- |
 | MCP server and tools | `mcp-server/server.py`. The JSON Schema for each tool comes from its type hints (`Literal` → `enum`, `Field(ge, le)` → `minimum`/`maximum`), and the docstring becomes the description the LLM reads. |
-| Discovery / invocation | `tools/list` in `mcp_client/tools.py`, `tools/call` through each LangChain tool |
+| Discovery / invocation | `tools/list` in `mcp_client/langchain_tools.py`, `tools/call` through each LangChain tool |
 | Tool errors | Schema violations and `ToolError` come back as `is_error=True`. The SDK hides the text of unexpected exceptions. |
 | Transport | Streamable HTTP at `/mcp`. stdio is available with `MCP_TRANSPORT=stdio`. |
 | Host / client | The AI server is the host. `mcp.Client` is the client. |

@@ -17,8 +17,14 @@ message.
 - Fixed values that are not settings (enum-like names, protocol and vocabulary strings,
   tool argument limits, fixed user-facing messages) live in the app's `constants.py`,
   never as module-level literals scattered across files. Use `StrEnum` for named sets
-  (`Step`, `McpTool`, `Metric`). Messages that embed variables stay as f-strings where
+  (`Step`, `McpTool`, `Metric`) in both apps, and use its members in code
+  (`Metric.ERROR_RATE`, not `"error_rate"`). Exception: an MCP tool argument is typed
+  as a `Literal` built from the enum (`MetricName`), so the JSON Schema shows an inline
+  `enum` rather than a `$ref`. Messages that embed variables stay as f-strings where
   they're raised.
+- A message that more than one implementation produces (real and fake backend) is
+  built in one shared function next to the error type (`cluster/backend.py::
+  not_found_error`), so the implementations can't drift apart.
 - Values that define an API contract (such as a tool's maximum `lines`) are named
   module-level constants (`MAX_LOG_LINES`). Never leave an unexplained literal
   in logic.
@@ -41,7 +47,7 @@ message.
   (LangChain `init_chat_model`). To switch provider or model, change `LLM_MODEL`
   (`"<provider>:<model>"`) and `LLM_API_KEY`. No code changes.
 - Orchestration uses LangGraph. Tools reach the LLM as LangChain tools built
-  from MCP tools (`mcp_client/tools.py`).
+  from MCP tools (`mcp_client/langchain_tools.py`).
 
 ## 4. App boundaries
 
@@ -76,9 +82,25 @@ message.
 - Names say what a thing is or does: `connect_to_mcp`, `load_langchain_tools`,
   `MAX_LOG_LINES`, `mcp_client`. Avoid `data`, `obj`, `tmp`, `c`, `x`.
 - Functions start with a verb. Booleans read as a yes/no question: `is_error`,
-  `completed`.
+  `is_condition_met`, `completed`. Use these prefixes consistently:
+  - `to_…` converts one object into another (`_to_pod_detail(raw)`, `to_markdown()`)
+  - `build_…` / `make_…` assembles a new value (`build_query`, `build_label_selector`,
+    `_make_healthy_container`)
+  - `extract_…` / `parse_…` pulls data out of something (`extract_result_text`, `parse_tool_output`)
+  - `get_…` / `list_…` / `query_…` reads from a source (`get_pod`, `query_prometheus`)
+  
+  Not `_pod_detail(raw)`, `result_text(result)` or `holds(condition)`.
 - Name files after their contents: `connection.py`, `collection_steps.py`,
-  `mcp_toolbox.py`, not `misc.py`, `collection.py` or `signals.py`.
+  `mcp_toolbox.py`, not `misc.py`, `collection.py` or `signals.py`. A module name
+  shouldn't repeat or collide with another layer's name: `mcp_client/langchain_tools.py`
+  (the MCP → LangChain adapter), not `mcp_client/tools.py` next to `mcp-server/tools/`.
+- Files in the same folder never differ only by extension or a letter.
+  `prometheus-deployment.yaml` (Kubernetes manifest) and `scrape-config.yml`
+  (Prometheus config), not `prometheus.yaml` and `prometheus.yml`. Kubernetes manifests
+  are named after what they contain.
+- Keep fake implementations out of the real ones' folders: `mcp-server/fake/` holds
+  every `MCP_BACKEND=fake` backend and its canned data. Test-only fakes stay in
+  `tests/` (`tests/fakes.py`).
 - Small pure functions used by the other modules of a package go in that
   package's `helpers.py` (`agent/evidence/helpers.py`, `tools/helpers.py`). Don't
   create a project-wide `utils.py`.
@@ -88,9 +110,10 @@ message.
   `collect_namespace_overview`, not `sweep`. A reader should know what a function
   does without opening it.
 - Avoid functions defined inside functions. Prefer a class whose methods share
-  dependencies (`InvestigationNodes`). Exception: MCP tool factories
+  dependencies (`InvestigationNodes`). Exceptions: MCP tool factories
   (`build_kubernetes_tools`) use closures because each tool's JSON Schema
-  (defaults, allowed namespaces) is built from settings at startup.
+  (defaults, allowed namespaces) is built from settings at startup; small handler
+  factories (`main.py::_build_error_handler`) return a configured callback.
 - Keep state shapes in their own module (`agent/workflow/state.py`), next to a constructor for
   the initial state.
 

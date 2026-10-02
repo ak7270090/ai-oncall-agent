@@ -2,6 +2,7 @@
 environment (URLs, timeouts, allowed namespaces, rate windows) lives in
 config/settings.py instead. Fake incident data lives in fake/incident_data.py."""
 
+from enum import StrEnum
 from typing import Literal
 
 # Tool argument contract: defaults and upper bounds published in each tool's JSON Schema.
@@ -20,19 +21,30 @@ REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
 WARNING_EVENT_TYPE = "Warning"
 
 # Metrics offered by get_metrics, and the unit each is reported in.
-Metric = Literal[
-    "request_rate", "error_rate", "error_count", "latency_p99_ms", "cpu_cores", "cpu_throttled_ratio", "memory_mb"
-]
-METRIC_UNITS: dict[str, str] = {
-    "request_rate": "req/s",
-    "error_rate": "ratio (0-1) of 5xx responses",
-    "error_count": "5xx responses in window",
-    "latency_p99_ms": "ms",
-    "cpu_cores": "cores per pod (avg); compare with the container cpu_limit",
-    "cpu_throttled_ratio": "ratio (0-1) of CPU periods throttled at the container limit",
-    "memory_mb": "MiB per pod (avg)",
+class Metric(StrEnum):
+    REQUEST_RATE = "request_rate"
+    ERROR_RATE = "error_rate"
+    ERROR_COUNT = "error_count"
+    LATENCY_P99_MS = "latency_p99_ms"
+    CPU_CORES = "cpu_cores"
+    CPU_THROTTLED_RATIO = "cpu_throttled_ratio"
+    MEMORY_MB = "memory_mb"
+
+
+# Type of the get_metrics `metric` argument. A Literal gives the model an inline `enum`
+# in the tool's JSON Schema; an Enum type would become a `$ref` instead.
+MetricName = Literal[tuple(metric.value for metric in Metric)]
+
+METRIC_UNITS: dict[Metric, str] = {
+    Metric.REQUEST_RATE: "req/s",
+    Metric.ERROR_RATE: "ratio (0-1) of 5xx responses",
+    Metric.ERROR_COUNT: "5xx responses in window",
+    Metric.LATENCY_P99_MS: "ms",
+    Metric.CPU_CORES: "cores per pod (avg); compare with the container cpu_limit",
+    Metric.CPU_THROTTLED_RATIO: "ratio (0-1) of CPU periods throttled at the container limit",
+    Metric.MEMORY_MB: "MiB per pod (avg)",
 }
-SERVICE_OVERVIEW_METRICS: tuple[Metric, ...] = ("request_rate", "error_rate", "latency_p99_ms")
+SERVICE_OVERVIEW_METRICS: tuple[Metric, ...] = (Metric.REQUEST_RATE, Metric.ERROR_RATE, Metric.LATENCY_P99_MS)
 METRIC_VALUE_DECIMALS = 4
 BYTES_PER_MIB = 1024 * 1024
 

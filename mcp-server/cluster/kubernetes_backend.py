@@ -9,7 +9,7 @@ from kubernetes.client.rest import ApiException
 from kubernetes.config.config_exception import ConfigException
 from urllib3.exceptions import HTTPError as TransportError
 
-from cluster.backend import ClusterError
+from cluster.backend import ClusterError, no_previous_container_error, not_found_error
 from cluster.models import (
     ClusterEvent,
     Condition,
@@ -28,7 +28,7 @@ def translate_errors(action: str, namespace: str) -> Iterator[None]:
         yield
     except ApiException as error:
         if error.status == 404:
-            raise ClusterError(f"Not found: {action} in namespace '{namespace}'") from error
+            raise not_found_error(action, namespace) from error
         if error.status == 403:
             raise ClusterError(f"Forbidden by RBAC: the MCP server may not {action} in '{namespace}'") from error
         raise ClusterError(f"Kubernetes API error {error.status} ({error.reason}) during {action}: {error.body}") from error
@@ -36,11 +36,11 @@ def translate_errors(action: str, namespace: str) -> Iterator[None]:
         raise ClusterError("Kubernetes API unreachable. Is the cluster running?") from error
 
 
-def _condition(raw) -> Condition:
+def _to_condition(raw) -> Condition:
     return Condition(type=raw.type, status=raw.status, reason=raw.reason, message=raw.message)
 
 
-def _resources(container) -> dict[str, str | None]:
+def _to_resource_fields(container) -> dict[str, str | None]:
     resources = container.resources if container else None
     requests = (resources.requests if resources else None) or {}
     limits = (resources.limits if resources else None) or {}
@@ -50,7 +50,7 @@ def _resources(container) -> dict[str, str | None]:
     }
 
 
-def _container_status(raw, spec) -> ContainerStatus:
+def _to_container_status(raw, spec) -> ContainerStatus:
     state, reason, message = "unknown", None, None
     if raw.state and raw.state.running:
         state = "running"
@@ -69,11 +69,11 @@ def _container_status(raw, spec) -> ContainerStatus:
         message=message,
         last_termination_reason=last.reason if last else None,
         last_exit_code=last.exit_code if last else None,
-        **_resources(spec),
+        **_to_resource_fields(spec),
     )
 
 
-def _pod_detail(raw) -> PodDetail:
+def _to_pod_detail(raw) -> PodDetail:
     labels = raw.metadata.labels or {}
     specs = {c.name: c for c in raw.spec.containers}
     return PodDetail(
@@ -84,12 +84,12 @@ def _pod_detail(raw) -> PodDetail:
         phase=raw.status.phase or "Unknown",
         node=raw.spec.node_name,
         created_at=raw.metadata.creation_timestamp,
-        conditions=[_condition(c) for c in raw.status.conditions or []],
-        containers=[_container_status(c, specs.get(c.name)) for c in raw.status.container_statuses or []],
+        conditions=[_to_condition(c) for c in raw.status.conditions or []],
+        containers=[_to_container_status(c, specs.get(c.name)) for c in raw.status.container_statuses or []],
     )
 
 
-def _deployment_summary(raw) -> DeploymentSummary:
+def _to_deployment_summary(raw) -> DeploymentSummary:
     template = raw.spec.template
     return DeploymentSummary(
         name=raw.metadata.name,
@@ -102,7 +102,7 @@ def _deployment_summary(raw) -> DeploymentSummary:
     )
 
 
-def _revision(raw) -> ReplicaSetRevision:
+def _to_replica_set_revision(raw) -> ReplicaSetRevision:
     annotations = raw.metadata.annotations or {}
     template = raw.spec.template
     return ReplicaSetRevision(
@@ -116,7 +116,7 @@ def _revision(raw) -> ReplicaSetRevision:
     )
 
 
-def _event(raw) -> ClusterEvent:
+def _to_cluster_event(raw) -> ClusterEvent:
     involved = raw.involved_object
     return ClusterEvent(
         type=raw.type or "Normal",
@@ -128,7 +128,7 @@ def _event(raw) -> ClusterEvent:
     )
 
 
-def _newest_first(value: datetime | None) -> float:
+def _newest_first_sort_key(value: datetime | None) -> float:
     return -value.timestamp() if value else 0.0
 
 
@@ -162,11 +162,11 @@ class KubernetesBackend:
         selector = f"app={app}" if app else None
         with translate_errors("list pods", namespace):
             pods = self._core.list_namespaced_pod(namespace, label_selector=selector, _request_timeout=self._timeout)
-        return [_pod_detail(p) for p in pods.items]
+        return [_to_pod_detail(p) for p in pods.items]
 
     def get_pod(self, namespace: str, name: str) -> PodDetail:
         with translate_errors(f"get pod '{name}'", namespace):
-            return _pod_detail(self._core.read_namespaced_pod(name, namespace, _request_timeout=self._timeout))
+            return _to_pod_detail(self._core.read_namespaced_pod(name, namespace, _request_timeout=self._timeout))
 
     def get_pod_logs(self, namespace: str, name: str, tail_lines: int, previous: bool) -> list[str]:
         try:
@@ -179,17 +179,14 @@ class KubernetesBackend:
                 text = response.data.decode("utf-8", errors="replace")
         except ClusterError as error:
             if previous and isinstance(error.__cause__, ApiException) and error.__cause__.status == 400:
-                raise ClusterError(
-                    f"Pod '{name}' has no previous (crashed) container; it has not restarted. "
-                    "Call get_pod_logs again with previous=false for its current logs."
-                ) from error
+                raise no_previous_container_error(name) from error
             raise
         return text.splitlines()
 
     def list_deployments(self, namespace: str) -> list[DeploymentSummary]:
         with translate_errors("list deployments", namespace):
             deployments = self._apps.list_namespaced_deployment(namespace, _request_timeout=self._timeout)
-        return [_deployment_summary(d) for d in deployments.items]
+        return [_to_deployment_summary(d) for d in deployments.items]
 
     def get_deployment(self, namespace: str, name: str) -> DeploymentDetail:
         with translate_errors(f"get deployment '{name}'", namespace):
@@ -203,14 +200,14 @@ class KubernetesBackend:
             if any(owner.uid == raw.metadata.uid for owner in rs.metadata.owner_references or [])
         ]
         return DeploymentDetail(
-            **_deployment_summary(raw).model_dump(),
+            **_to_deployment_summary(raw).model_dump(),
             namespace=namespace,
-            conditions=[_condition(c) for c in raw.status.conditions or []],
-            revisions=sorted((_revision(rs) for rs in owned), key=lambda r: r.revision, reverse=True),
+            conditions=[_to_condition(c) for c in raw.status.conditions or []],
+            revisions=sorted((_to_replica_set_revision(rs) for rs in owned), key=lambda r: r.revision, reverse=True),
         )
 
     def list_events(self, namespace: str, warnings_only: bool, limit: int) -> list[ClusterEvent]:
         selector = f"type={WARNING_EVENT_TYPE}" if warnings_only else None
         with translate_errors("list events", namespace):
             events = self._core.list_namespaced_event(namespace, field_selector=selector, _request_timeout=self._timeout)
-        return sorted((_event(e) for e in events.items), key=lambda e: _newest_first(e.last_seen))[:limit]
+        return sorted((_to_cluster_event(e) for e in events.items), key=lambda e: _newest_first_sort_key(e.last_seen))[:limit]

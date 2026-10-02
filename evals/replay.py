@@ -16,10 +16,10 @@ EVALS_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = EVALS_DIR / "results"
 sys.path.insert(0, str(EVALS_DIR.parent / "ai-server"))
 
-from incident_cases import INCIDENT_CASES  # noqa: E402
-
 from agent import Evidence, IncidentScope, create_chat_model  # noqa: E402
 from agent.investigation import reanalyze_evidence  # noqa: E402
+from incident_cases import INCIDENT_CASES  # noqa: E402
+
 from config import get_settings  # noqa: E402
 
 INCIDENT_CASES_BY_NAME = {s.name: s for s in INCIDENT_CASES}

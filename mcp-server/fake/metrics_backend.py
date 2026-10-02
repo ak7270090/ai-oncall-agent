@@ -23,9 +23,9 @@ class FakeMetricsBackend:
         return [
             ServiceHealth(
                 service=service,
-                request_rate_per_second=metrics["request_rate"][-1],
-                error_rate=metrics["error_rate"][-1],
-                latency_p99_ms=metrics["latency_p99_ms"][-1],
+                request_rate_per_second=metrics[Metric.REQUEST_RATE][-1],
+                error_rate=metrics[Metric.ERROR_RATE][-1],
+                latency_p99_ms=metrics[Metric.LATENCY_P99_MS][-1],
             )
             for service, metrics in sorted(incident_data.METRICS.items())
         ]

@@ -3,7 +3,7 @@ from mcp import Client
 from starlette.testclient import TestClient
 
 from config import Settings
-from server import create_server, transport_security
+from server import build_transport_security, create_server
 
 KUBERNETES_TOOLS = {"list_pods", "get_pod_status", "get_pod_logs", "list_deployments", "get_deployment", "list_events"}
 OBSERVABILITY_TOOLS = {"get_service_overview", "get_metrics"}
@@ -136,17 +136,17 @@ async def test_metrics_namespace_outside_allowlist_rejected(client):
 
 
 def test_transport_security_uses_sdk_default_without_allowed_hosts():
-    assert transport_security(fake_settings()) is None
+    assert build_transport_security(fake_settings()) is None
 
 
 def test_transport_security_enforces_allowed_hosts():
-    security = transport_security(fake_settings(allowed_hosts=["mcp-server:*"]))
+    security = build_transport_security(fake_settings(allowed_hosts=["mcp-server:*"]))
     assert security.enable_dns_rebinding_protection
     assert security.allowed_hosts == ["mcp-server:*"]
 
 
 def test_foreign_host_header_rejected(server):
-    app = server.streamable_http_app(transport_security=transport_security(fake_settings(allowed_hosts=["mcp-server:*"])))
+    app = server.streamable_http_app(transport_security=build_transport_security(fake_settings(allowed_hosts=["mcp-server:*"])))
     with TestClient(app) as http:
         response = http.post("/mcp", headers={"Host": "evil.example:9000"}, json={})
     assert response.status_code == 421

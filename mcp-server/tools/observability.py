@@ -1,8 +1,6 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from observability import MetricsBackend
-from observability.models import MetricSeries, ServiceOverview
 from pydantic import Field
 
 from config import Settings
@@ -11,8 +9,10 @@ from constants import (
     MAX_HISTORY_MINUTES,
     METRIC_UNITS,
     NAME_PATTERN,
-    Metric,
+    MetricName,
 )
+from observability import MetricsBackend
+from observability.models import MetricSeries, ServiceOverview
 from tools.helpers import namespace_guard
 
 
@@ -32,7 +32,7 @@ def build_observability_tools(backend: MetricsBackend, settings: Settings) -> li
 
     def get_metrics(
         service: ServiceName,
-        metric: Metric,
+        metric: MetricName,
         namespace: Namespace = settings.default_namespace,
         minutes: Annotated[int, Field(ge=1, le=MAX_HISTORY_MINUTES, description="How far back to look")] = DEFAULT_HISTORY_MINUTES,
     ) -> MetricSeries:

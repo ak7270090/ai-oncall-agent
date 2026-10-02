@@ -29,12 +29,12 @@ class IncidentCase:
     symptom: PromCondition | PodCondition
 
 
-def _error_rate(service: str) -> str:
+def _error_rate_query(service: str) -> str:
     requests = f'http_requests_total{{namespace="shop",service="{service}"'
     return f'(sum(rate({requests},status="5xx"}}[30s])) or vector(0)) / sum(rate({requests}}}[30s]))'
 
 
-def _p99_ms(service: str) -> str:
+def _p99_latency_query(service: str) -> str:
     buckets = f'http_request_duration_seconds_bucket{{namespace="shop",service="{service}"}}'
     return f"1000 * histogram_quantile(0.99, sum by (le) (rate({buckets}[30s])))"
 
@@ -45,21 +45,21 @@ INCIDENT_CASES: list[IncidentCase] = [
         question="Customers say checkout started failing a few minutes ago. What is wrong?",
         expected_category="dependency_unavailable",
         expected_service="payment-service",
-        symptom=PromCondition(_error_rate("order-service"), above=0.5),
+        symptom=PromCondition(_error_rate_query("order-service"), above=0.5),
     ),
     IncidentCase(
         name="db-down",
         question="Checkout errors started a few minutes ago. What is going on?",
         expected_category="dependency_unavailable",
         expected_service="payments-db",
-        symptom=PromCondition(_error_rate("payment-service"), above=0.5),
+        symptom=PromCondition(_error_rate_query("payment-service"), above=0.5),
     ),
     IncidentCase(
         name="bad-deploy",
         question="Orders have been failing since the latest release. Please investigate.",
         expected_category="bad_deployment",
         expected_service="payment-service",
-        symptom=PromCondition(_error_rate("payment-service"), above=0.5),
+        symptom=PromCondition(_error_rate_query("payment-service"), above=0.5),
     ),
     IncidentCase(
         name="crash-loop",
@@ -73,21 +73,21 @@ INCIDENT_CASES: list[IncidentCase] = [
         question="Checkout has become very slow. What's wrong?",
         expected_category="resource_exhaustion",
         expected_service="user-service",
-        symptom=PromCondition(_p99_ms("user-service"), above=1000),
+        symptom=PromCondition(_p99_latency_query("user-service"), above=1000),
     ),
     IncidentCase(
         name="slow-payments",
         question="Placing an order takes several seconds now. Why?",
         expected_category="slow_dependency",
         expected_service="payment-service",
-        symptom=PromCondition(_p99_ms("order-service"), above=2000),
+        symptom=PromCondition(_p99_latency_query("order-service"), above=2000),
     ),
 ]
 
 # The cluster counts as healthy again (safe to start the next incident) when all of these hold.
 # `bool` makes a comparison return 1/0 instead of filtering, so a healthy 0.0 still counts.
 HEALTHY: list[PromCondition] = [
-    PromCondition(f"{_error_rate(service)} < bool 0.02", above=0.5) for service in ("order-service", "payment-service")
+    PromCondition(f"{_error_rate_query(service)} < bool 0.02", above=0.5) for service in ("order-service", "payment-service")
 ] + [
-    PromCondition(f"{_p99_ms(service)} < bool 500", above=0.5) for service in ("order-service", "user-service")
+    PromCondition(f"{_p99_latency_query(service)} < bool 500", above=0.5) for service in ("order-service", "user-service")
 ]

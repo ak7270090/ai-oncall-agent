@@ -1,7 +1,7 @@
 from cluster.backend import ClusterBackend, ClusterError
-from fake.cluster_backend import FakeClusterBackend
 from cluster.kubernetes_backend import KubernetesBackend
 from config import Settings
+from fake.cluster_backend import FakeClusterBackend
 
 
 def create_backend(settings: Settings) -> ClusterBackend:

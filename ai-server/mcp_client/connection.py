@@ -10,7 +10,7 @@ class MCPUnavailableError(Exception):
     pass
 
 
-def _root_cause(error: BaseException) -> BaseException:
+def _unwrap_exception_group(error: BaseException) -> BaseException:
     while isinstance(error, BaseExceptionGroup) and error.exceptions:
         error = error.exceptions[0]
     return error
@@ -28,7 +28,7 @@ async def connect_to_mcp(server: str | MCPServer, timeout_seconds: float) -> Asy
         async with Client(server, read_timeout_seconds=timeout_seconds) as mcp_client:
             yield mcp_client
     except BaseExceptionGroup as group:
-        error = _root_cause(group)
+        error = _unwrap_exception_group(group)
         if isinstance(error, httpx2.TransportError):
             raise MCPUnavailableError(f"MCP server unreachable at {server}") from error
         raise error from group
