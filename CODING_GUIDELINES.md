@@ -325,3 +325,18 @@ message.
   messages as the JSON endpoint (`api/errors.py`).
 - Run linters per app, from that app's folder: run from another app, its local packages
   look like third-party ones and imports get reordered wrongly.
+
+## 21. Model routing and MCP sampling
+
+- Models are chosen through `ModelRouter` (`agent/llm/model_router.py`), never by
+  creating a second chat model in a step. Tiers are config (`LLM_MODEL`,
+  `LLM_MODEL_FAST`, `FAST_MODEL_STEPS`), still `provider:model` strings.
+- Move a step to the cheaper tier only with an experiment showing the pass rate holds.
+  A step that decides the answer (`write_report` picks the cause category) is reasoning,
+  not formatting.
+- An MCP server that needs an LLM asks the client through sampling with model
+  preferences; it never holds an API key or names a provider.
+- A sampling resolver must ask the identical question on every round of the
+  input-required round trip: build it from data that can't change between rounds
+  (`RecentLogs`), and fall back to the raw data when the client can't sample.
+- Sampling is capped per investigation and every sampled call is traced.

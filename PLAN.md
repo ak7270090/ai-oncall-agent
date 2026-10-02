@@ -82,7 +82,7 @@ Sizes in the roadmap are rough: **S** about a day, **M** two to three days, **L*
 | 14 | Advanced MCP | Prompts: server-provided prompt templates | S | 13 | Not started |
 | 15 | Advanced MCP | Progress, logging, cancellation, live streaming | M | – | Done (MCP logging deprecated, not used) |
 | 16 | Advanced MCP | Completions and tool annotations | S | – | Not started |
-| 17 | Advanced MCP | Sampling + model routing: cheap model for log summaries | L | 15 | Not started |
+| 17 | Advanced MCP | Sampling + model routing: cheap model for log summaries | L | 15 | Done |
 | 18 | Write actions | Write tools + human approval through elicitation | L | 16 | Not started |
 | 19 | Security | MCP authentication (tokens, scopes) | M | 18 | Not started |
 | 20 | Security | Tool-level authorization + audit log | M | 19 | Not started |
@@ -313,7 +313,16 @@ destructive tool is never bound to the LLM (fake MCP server with such a tool).
 
 **Done when:** annotations are visible and enforced, with a test proving the block.
 
-### Phase 17 — Sampling and model routing
+### Phase 17 — Sampling and model routing (done)
+
+Built as planned (README "Log summaries and model routing"). Measured on the kind
+cluster: nano summaries let the agent read 200 instead of 50 log lines with 18% fewer
+strong-model input tokens at about the same total cost (4/6 → 5/6, one run each).
+Moving `write_report` to the fast model saved 40% but hurt the hardest incident, so it
+stays on the strong model. Cascading was not built. Found on the way: with protocol
+2026-07-28 the tool runs twice and the sampling question must be identical, so fetched
+log lines are cached briefly.
+
 
 **Why:** `get_pod_logs` returns up to 500 lines; most are noise and all of it goes into
 the expensive root-cause prompt (about 6k input tokens per LLM call today). Summarizing
