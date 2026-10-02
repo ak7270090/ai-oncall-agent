@@ -9,3 +9,4 @@ CONTRIBUTING.md
 kubernetes/base/secrets/*.env
 mcp-server/.kube/
 evals/results/
+docs/WALKTHROUGH.md
