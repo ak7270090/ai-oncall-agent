@@ -4,11 +4,16 @@ Learning-first build of an AI on-call assistant that investigates incidents acro
 Kubernetes and Prometheus through the Model Context Protocol (MCP). The goal is to
 learn MCP deeply through a real project, one phase at a time.
 
-**Status:** Phases 1–12 are done. The agent investigates six injected incidents and
-gets all six right (`make eval`), every investigation is traced in Langfuse, and every
-eval or replay run is a Langfuse experiment that can be compared with earlier runs.
-Next: the advanced MCP features (Phases 13–17), then safe write actions and security
-(Phases 18–22).
+**Status:** Phases 1–12, 15 and 17 are done. The agent investigates six injected
+incidents and gets all six right, twice in a row (`make eval`); every investigation is
+traced in Langfuse and streamed live; every eval or replay run is a Langfuse experiment.
+Model routing (a strong and a fast model) and MCP sampling are in place.
+
+What's left, in four parts: the remaining MCP features (Part B), safe write actions and
+security (Part C), and **LLM engineering techniques** (Part D: evaluation rigor, prompt
+caching, fallbacks, smarter routing, retrieval over past incidents, guardrails, memory,
+multi-agent, proactive alerts, distillation). The recommended order is under
+"What to do next".
 
 ## Where we are
 
@@ -42,6 +47,9 @@ User ──► ai-server (FastAPI + LangGraph + LLM + MCP client)   evals/ (make
 | 10 | Agent metrics: covered by Langfuse dashboards (tokens, cost, latency per step and model) | Langfuse UI |
 | 11 | Tracing of every investigation | `ai-server/tracing/`, README "Tracing with Langfuse" |
 | 12 | Eval and replay runs as Langfuse experiments, scored per incident | `evals/experiment_tracking.py`, README "Comparing runs in Langfuse" |
+| 15 | Live progress over Server-Sent Events, MCP progress, cancellation | `ai-server/streaming/`, `POST /investigate/stream` |
+| 17 | MCP sampling for log summaries, model routing (strong / fast tier) | `mcp-server/tools/log_summary.py`, `ai-server/agent/llm/model_router.py` |
+| – | Computed findings (CPU-starved, slow now vs. recovered), parallel traffic | `agent/evidence/helpers.py::computed_findings` |
 
 ## How every phase is done
 
@@ -88,6 +96,16 @@ Sizes in the roadmap are rough: **S** about a day, **M** two to three days, **L*
 | 20 | Security | Tool-level authorization + audit log | M | 19 | Not started |
 | 21 | Security | Hardening (prompt injection, limits, TLS, policies) | M | 20 | Not started |
 | 22 | Advanced MCP | Multiple MCP servers, dynamic discovery, gateway | L | 19 | Not started |
+| 23 | LLM engineering | Evaluation rigor: more incidents, repeated runs, CI gate | M | – | Not started |
+| 24 | LLM engineering | Prompt caching and context engineering | M | 23 | Not started |
+| 25 | LLM engineering | Resilience: fallbacks, retries, budgets | S | – | Not started |
+| 26 | LLM engineering | Model routing II: model matrix, cascading, self-consistency | M | 23 | Not started |
+| 27 | LLM engineering | Incident memory: RAG over past incidents and runbooks | L | 13, 23 | Not started |
+| 28 | LLM engineering | Groundedness: citation checks, LLM-as-judge, guardrails | M | 23 | Not started |
+| 29 | LLM engineering | Conversations and human-in-the-loop (memory, interrupts) | M | – | Not started |
+| 30 | LLM engineering | Multi-agent specialists vs. one graph (an experiment) | L | 23 | Not started |
+| 31 | LLM engineering | Proactive on-call: alert webhook → investigation → chat | M | 25 | Not started |
+| 32 | LLM engineering | Distillation: a small model trained on our own traces | L | 23, 26 | Not started |
 
 ---
 
@@ -553,31 +571,295 @@ code-changes server.
 
 ---
 
+## Part D — LLM engineering techniques (Phases 23–32)
+
+Parts B and C are about MCP. This part is about the techniques that make any LLM
+application cheaper, more reliable and easier to trust. Each phase uses what already
+exists here: Langfuse traces show the effect of every change, and experiments
+(`make replay`, `make eval`) prove it before it's kept.
+
+| Technique | One line | Phase |
+| --- | --- | --- |
+| Evaluation-driven development | no change without a measured before/after | 23 (and every phase) |
+| Prompt caching | reuse the provider's cache for repeated prompt beginnings | 24 |
+| Context engineering | decide exactly what goes into the context window, and in what order | 24 |
+| Fallbacks and budgets | survive provider outages; cap cost and time per investigation | 25 |
+| Model routing II | pick models per step by experiment; escalate only when needed | 26 |
+| Self-consistency | ask several times, keep the majority answer | 26 |
+| RAG | retrieve similar past incidents and runbook sections | 27 |
+| Groundedness and guardrails | check the report against the evidence before showing it | 28 |
+| Agent memory, human-in-the-loop | follow-up questions; pause for a human | 29 |
+| Multi-agent | specialist agents under a supervisor | 30 |
+| Event-driven agents | start from an alert, not a question | 31 |
+| Distillation | teach a small model from the big model's good answers | 32 |
+
+### Phase 23 — Evaluation rigor
+
+**Why:** six incidents and one run per setup is too little to compare anything: the same
+code scored 4/6 one day and 6/6 the next. Every later phase depends on comparisons.
+
+**Concept:** an eval is a measurement, so it needs enough samples and a stated noise
+level. *Regression testing* for LLM apps means re-running a fixed dataset on every
+change, like unit tests, but judging rates rather than single results.
+
+**Build:**
+- `make eval TIMES=n` (and per-incident pass rates over the runs in the summary and in
+  Langfuse).
+- More incidents (each a kustomize overlay + an `incident_cases.py` entry):
+  `memory-leak` (OOMKilled, `resource_exhaustion`), `bad-config` (wrong ConfigMap value,
+  `bad_deployment`), `dns-failure` (a Service renamed, `dependency_unavailable`),
+  `two-incidents` (two at once: report both), `no-incident` (healthy system: must answer
+  `no_incident`, the false-alarm test).
+- A **replay suite** in git: the saved evidence of every incident (no secrets in it),
+  replayed on every push in CI with `TIMES=3`; the pass rate is the gate.
+
+**Measure:** run today's agent 3× on the new set: that's the new baseline.
+
+**Done when:** `make eval TIMES=3` covers 11 incidents, the replay gate runs in CI, and
+the baseline is recorded.
+
+### Phase 24 — Prompt caching and context engineering
+
+**Why:** about 13k–16k input tokens per investigation go to the strong model, and the
+evidence is sent twice (root cause and report). Measured on 2026-10-03: 0% of 224k input
+tokens were served from the provider's prompt cache.
+
+**Concepts:**
+- **Prompt caching:** providers (OpenAI automatically, Anthropic on request) keep the
+  processed beginning of a prompt for a few minutes; a later request that starts with
+  the *same* tokens pays a discounted price for that part and is faster. Only an
+  identical **prefix** counts.
+- **Context engineering:** choosing what enters the context window and in what order:
+  stable parts first (instructions, evidence), changing parts last (the step's task);
+  compact, relevant evidence instead of everything.
+
+**Build:**
+- One shared system prompt and the evidence block first, then a short step-specific
+  instruction at the end, so `find_root_cause` and `write_report` share a long prefix.
+- Evidence digest: drop healthy noise (successful probes, empty results), compact JSON,
+  a per-tool token budget; `computed_findings` at the top.
+- Show cache hits per investigation (Langfuse `input_cache_read`) in the README.
+
+**Measure:** cache-read share, input tokens and cost per investigation before/after;
+pass rate must not drop (`make replay TIMES=3`, then `make eval TIMES=2`).
+
+**Done when:** most of the report step's input is a cache hit and cost per investigation
+drops at the same pass rate.
+
+### Phase 25 — Resilience: fallbacks, retries and budgets
+
+**Why:** an on-call tool must work when the LLM provider is slow or down — that's exactly
+when incidents happen.
+
+**Concepts:** *fallback models* (a second model or provider when the first fails),
+*retries with backoff*, *timeouts*, and *budgets* (maximum tokens, cost and time per
+investigation).
+
+**Build:**
+- `LLM_FALLBACK_MODEL` (any `provider:model`), wired with LangChain's `with_fallbacks`
+  in the `ModelRouter`; each fallback is marked in the trace and the report.
+- A per-investigation budget (`MAX_INVESTIGATION_TOKENS`, `MAX_INVESTIGATION_SECONDS`):
+  when reached, skip optional work (follow-up rounds, summaries) and write the report
+  with what exists, saying so.
+- Tests with a failing fake model and a slow fake MCP tool.
+
+**Measure:** inject failures (wrong key for the primary model) and check the eval still
+passes; budgets show in the trace.
+
+**Done when:** a primary-model outage still produces a report, and no investigation can
+exceed its budget.
+
+### Phase 26 — Model routing II: matrix, cascading, self-consistency
+
+**Why:** Phase 17 showed per-step model choice matters (a cheaper report model saved 40%
+but lost accuracy). Now that the baseline is stable, choose models by data.
+
+**Concepts:**
+- **Model matrix:** run every step × candidate model as experiments and pick the
+  cheapest per step that keeps the pass rate.
+- **Cascading (escalation):** answer with the cheap model; escalate to the strong one
+  only when a check fails (low confidence, invalid output, findings contradicted).
+- **Self-consistency:** ask the same question several times (or to two models) and keep
+  the majority; spend it only where answers disagree.
+
+**Build:**
+- `make model-matrix` (replay): candidates `gpt-5.4-mini`, `gpt-5-mini`,
+  `gpt-4.1-mini`, `gpt-5.4-nano` for `write_report` and `extract_incident_scope`;
+  a results table from Langfuse.
+- Cascading in `ModelRouter`: a step can declare an escalation check.
+- Optional self-consistency for `find_root_cause` when confidence is medium/low.
+
+**Measure:** cost per correct answer (not just cost) across setups.
+
+**Done when:** each LLM step's model is chosen from the matrix, and cascading lowers cost
+at the same pass rate.
+
+### Phase 27 — Incident memory: RAG over past incidents and runbooks
+
+**Why:** experienced on-call engineers remember "we saw this last month". Every
+investigation here is saved (report + evidence), and Phase 13 adds runbooks.
+
+**Concepts:** *embeddings* and a *vector store*; **hybrid search** (vector + keyword,
+because error codes and service names must match exactly); **metadata filters**
+(namespace, service); **reranking**; **retrieval evaluation** (did the right past
+incident come back?).
+
+**Build:**
+- An incident store: each finished investigation's report, findings and key evidence,
+  embedded (provider-agnostic embeddings via LangChain) into a local vector store
+  (pgvector in the existing Postgres or Chroma).
+- Retrieval step before `find_root_cause`: top similar past incidents and runbook
+  sections, filtered by namespace/service, hybrid + rerank, as a short "similar past
+  incidents" section in the prompt.
+- Possibly exposed as an MCP resource/tool (`past_incidents://`) so other MCP clients
+  can use it too.
+- Retrieval eval: for each incident case, is a previous run of the same incident in the
+  top 3? (context precision/recall, e.g. with Ragas).
+
+**Measure:** pass rate and confidence with vs. without memory, on the larger Phase 23 set.
+
+**Done when:** retrieval finds the matching past incident for most cases and the eval
+doesn't regress (ideally: higher confidence, fewer follow-up tool calls).
+
+### Phase 28 — Groundedness: citation checks, LLM-as-judge, guardrails
+
+**Why:** the report cites evidence; nothing checks that the citations exist or say what
+the report claims. A confident but ungrounded report is the worst on-call failure.
+
+**Concepts:** *groundedness / faithfulness* (every claim supported by retrieved or
+collected evidence), *LLM-as-judge* (a second model grades quality), *guardrails*
+(automatic checks that block or flag bad output).
+
+**Build:**
+- Code check: each `EvidenceCitation.source` must match a tool in the evidence and its
+  quoted finding must appear in that tool's result; failures are flagged in the report
+  and as a Langfuse score.
+- LLM-as-judge in evals (cheap model, fixed rubric): evidence cited, cause supported,
+  actions sensible; a separate score next to exact-match `correct`.
+- A guardrail: findings stated by code (`computed_findings`) can't be contradicted —
+  if the report does, retry once or mark it.
+
+**Measure:** groundedness rate per run; correlation of the judge score with `correct`.
+
+**Done when:** every report carries a groundedness check, and the judge score is part of
+experiments.
+
+### Phase 29 — Conversations and human-in-the-loop
+
+**Why:** after a report, an engineer asks "why not the database?" or "show me the
+payment-service logs". Today every question starts from zero.
+
+**Concepts:** *agent memory* (state kept per conversation), LangGraph **checkpointers**
+(persist graph state), **interrupts** (pause the graph for a human decision, resume
+later).
+
+**Build:**
+- A conversation id: `POST /investigations/{id}/messages` continues an investigation
+  with its evidence and messages (checkpointer: SQLite/Postgres), with follow-up tool
+  calls allowed.
+- An interrupt before expensive or sensitive steps (prepares Phase 18's approvals).
+- Streamed like Phase 15.
+
+**Measure:** follow-up questions answered without re-collecting evidence (tokens, time).
+
+**Done when:** a follow-up question reuses the investigation's state, and a paused graph
+resumes after a human answer.
+
+### Phase 30 — Multi-agent specialists vs. one graph
+
+**Why:** "multi-agent" is popular; whether it helps here is an open question, and this
+project can answer it with data.
+
+**Concept:** a **supervisor** delegates to specialist agents (metrics analyst, logs
+analyst, deployment analyst), each with its own tools and prompt, and merges their
+findings — versus the current single graph with deterministic collection.
+
+**Build:** a second graph behind a setting (`INVESTIGATION_MODE=multi_agent`), same tools
+and report format, so both run on the same eval.
+
+**Measure:** pass rate, cost, latency and tokens of both modes on the Phase 23 set.
+
+**Done when:** the comparison is published in the README — whichever wins stays default.
+
+### Phase 31 — Proactive on-call: alert → investigation → chat
+
+**Why:** real incidents start with an alert, not with someone typing a question.
+
+**Concepts:** *event-driven agents*; Prometheus **alerting rules** and **Alertmanager
+webhooks**; deduplication (one investigation per incident, not per alert).
+
+**Build:**
+- Alerting rules for the sample services (error rate, latency, restarts).
+- `POST /alerts` (Alertmanager webhook) turns an alert into a question and starts an
+  investigation; repeated alerts within a window join the same one.
+- The report is posted to a chat channel (Slack webhook, or a local log sink for tests),
+  with the Langfuse trace link.
+
+**Measure:** time from injected incident to posted report, over the incident set.
+
+**Done when:** `make incident NAME=db-down` produces a chat message with the right root
+cause, without anyone asking.
+
+### Phase 32 — Distillation: a small model trained on our own traces
+
+**Why:** if a small model could do the strong model's job on *these* incidents, every
+investigation gets much cheaper. The traces in Langfuse are ready-made training data.
+
+**Concepts:** **distillation** (a small model learns from a big model's outputs) and
+**fine-tuning** (provider fine-tuning API); train/test split; overfitting to six
+incidents is the main risk.
+
+**Build:** export good (correct, grounded) root-cause and report traces from Langfuse as
+training examples; fine-tune a small model through the provider; route it as a tier in
+the `ModelRouter`.
+
+**Measure:** the fine-tuned small model vs. the strong model on incidents it never saw in
+training (the Phase 23 set, held out).
+
+**Done when:** a fine-tuned small model matches the strong model on held-out incidents at
+a fraction of the cost — or the experiment shows why it doesn't.
+
+---
+
+## What to do next
+
+A suggested order, cheapest and most useful first:
+
+1. **Phase 23 (evaluation rigor).** Everything else is judged by it.
+2. **Phase 24 (prompt caching, context)** and **Phase 25 (resilience):** quick, measurable
+   wins in cost and reliability.
+3. **Phase 26 (model routing II):** decide every step's model by data.
+4. **Phase 13 (resources), then 27 (incident memory / RAG):** the knowledge features.
+5. **Phase 28 (groundedness):** before anyone relies on the reports.
+6. **Phases 29, 18–21:** conversations, then write actions with approval and security.
+7. **Phases 30, 31, 32, 22:** the larger experiments.
+
+---
+
 ## Backlog (ideas not yet scheduled)
 
-- **Repeated eval runs:** `make eval TIMES=n`, so one lucky or unlucky run doesn't
-  decide a comparison (one run per setup swung between 4/6 and 6/6).
+Repeated eval runs, more incidents, CI, LLM-as-judge and alerts moved into Part D.
 
-- **More incidents in the eval:** memory leak (OOMKilled), bad ConfigMap value, DNS or
-  NetworkPolicy breakage, two simultaneous incidents, a healthy system ("no incident").
-  More cases make every comparison in Langfuse more trustworthy.
-- **LLM-as-judge score** for report quality (evidence cited, actions sensible), next to
-  the exact-match grade.
-- **User feedback:** 👍/👎 on a report, stored as a Langfuse score on its trace.
-- **Prometheus metrics and alerts for the agent** (the original Phase 10), for
-  unattended use.
-- **CI:** tests and `make replay` on every push, with the pass rate as a gate.
+- **User feedback:** 👍/👎 on a report, stored as a Langfuse score on its trace; bad ones
+  become new eval cases.
+- **Prometheus metrics for the agent** (the original Phase 10), for unattended use.
 - **mcp-server tracing:** OpenTelemetry in the MCP server so its internal spans join the
   investigation trace.
+- **Langfuse prompt management:** versioned prompts fetched at runtime, compared in
+  experiments.
+- **Batch API for evals:** providers' batch endpoints are much cheaper for non-urgent
+  LLM calls (replay suites).
+- **Semantic caching:** reuse an answer for the same alert within minutes (careful:
+  incidents change fast; measure before keeping).
 
 ## Working with Claude Code
 
 Give Claude Code **one phase at a time**, so the codebase stays understandable and you
 learn from each step. Example:
 
-> "Implement Phase 13 only, as described in PLAN.md. Start with a `make replay`
-> baseline, follow CODING_GUIDELINES.md, run all tests, compare the eval with the
-> baseline in Langfuse, and update README. Don't start Phase 14."
+> "Implement Phase 23 only, as described in PLAN.md. Start with a `make replay`
+> baseline, follow CODING_GUIDELINES.md, run all tests, compare with the baseline in
+> Langfuse, and update README. Don't start Phase 24."
 
 Review each phase's output before moving to the next. See
 [CODING_GUIDELINES.md](./CODING_GUIDELINES.md) for code rules and
