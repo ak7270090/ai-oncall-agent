@@ -235,6 +235,12 @@ message.
 
 ## 16. Investigation graph (AI server)
 
+- When a conclusion follows from the evidence with certainty (a service is CPU-starved,
+  a service is slow now vs. was slow earlier), compute it in code
+  (`helpers.computed_findings`) and state it to the LLM; don't rely on the LLM to infer
+  it from raw numbers. Base each finding on two independent signals where one alone
+  can mislead (throttling *and* real CPU use).
+
 - Evidence gathering that should always happen goes in deterministic graph
   steps (`agent/evidence/collection_steps.py`), not in the prompt. The LLM understands the
   question, reasons over evidence and writes the report. It doesn't decide the

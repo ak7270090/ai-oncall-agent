@@ -229,7 +229,7 @@ then `make run-mcp-server` and `make run-ai-server`, or `make up-kind`, and ask
 
 ```text
 sample services ──/metrics──► Prometheus (namespace monitoring) ──HTTP API──► MCP metrics tools ──► agent
-traffic-generator ──1 order/s──► order-service ──► user-service, payment-service
+traffic-generator ──4 workers × ~1 order/s──► order-service ──► user-service, payment-service
 ```
 
 - **Instrumentation.** Each sample service exposes `/metrics` via
@@ -307,7 +307,7 @@ Results are printed as a table and saved to `evals/results/` (gitignored).
 Run a subset with `make eval NAME=db-down,high-cpu`. Each run costs about 3
 LLM calls per incident.
 
-**Latest results: 6/6 pass, all with high confidence** (full run about 11 minutes).
+**Latest results (2026-10-03): 6/6 in two consecutive runs, all with high confidence** (full run about 11 minutes).
 
 **What the eval uncovered and fixed:**
 - payment-service never recovered after a database restart: the table was
@@ -329,6 +329,18 @@ LLM calls per incident.
 - The categories were ambiguous (a config rollout that makes a service slow
   looked like `bad_deployment`). `cause_category` is now chosen by failure
   mechanism, in a fixed precedence order.
+- The traffic generator was one loop that waited for each answer, so load eased off
+  exactly when a service slowed down: during high-cpu, user-service was throttled
+  anywhere from 34% to 66% depending on timing. Now `TRAFFIC_WORKERS` (4) loops run in
+  parallel, like real users, and throttling is a steady 87-97%.
+- At moderate signal levels the LLM drew the wrong conclusion from correct evidence: a
+  service throttled at its CPU limit was called a "slow dependency", and a service that
+  was slow during the *previous* incident was blamed for the current one. Code now
+  states both facts as **computed findings** in the root-cause and report prompts
+  (`agent/evidence/helpers.py::computed_findings`): "X is held at its CPU limit (250m):
+  throttled in 49% of CPU periods" and "slow right now: … / Y was slow earlier but has
+  recovered". A service counts as CPU-starved only if it also uses at least 15% of its
+  limit: an idle container with short bursts can look throttled too.
 
 **Working on the agent's reasoning.** `make eval` saves every investigation with
 its raw evidence. `make replay NAME=high-cpu TIMES=5` re-runs only the LLM

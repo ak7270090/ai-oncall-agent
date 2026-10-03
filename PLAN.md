@@ -555,6 +555,9 @@ code-changes server.
 
 ## Backlog (ideas not yet scheduled)
 
+- **Repeated eval runs:** `make eval TIMES=n`, so one lucky or unlucky run doesn't
+  decide a comparison (one run per setup swung between 4/6 and 6/6).
+
 - **More incidents in the eval:** memory leak (OOMKilled), bad ConfigMap value, DNS or
   NetworkPolicy breakage, two simultaneous incidents, a healthy system ("no incident").
   More cases make every comparison in Langfuse more trustworthy.
