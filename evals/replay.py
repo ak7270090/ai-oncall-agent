@@ -31,6 +31,7 @@ from agent import Evidence, IncidentScope, create_model_router  # noqa: E402
 from agent.evidence.helpers import computed_findings  # noqa: E402
 from agent.investigation import reanalyze_evidence  # noqa: E402
 from config import get_settings  # noqa: E402
+from constants import McpOperation  # noqa: E402
 from tracing import InvestigationTracer, TraceLabels, create_tracer  # noqa: E402
 
 INCIDENT_CASES_BY_NAME = {s.name: s for s in INCIDENT_CASES}
@@ -72,6 +73,7 @@ async def reanalyze(reasoning: ReasoningLoop, incident: IncidentCase, response: 
         evidence, response["notes"], tracer, TraceLabels(tuple(tracker.trace_tags(incident)), traceparent),
         computed_findings(evidence, settings.cpu_throttled_ratio_threshold, settings.cpu_min_usage_of_limit,
                           settings.latency_threshold_ms),
+        list(McpOperation),  # replay as if the MCP server offered the write tools
     )
     return {"report": result.report.model_dump()}
 

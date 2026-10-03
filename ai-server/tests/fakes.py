@@ -7,9 +7,10 @@ from typing import Annotated, Any
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
+from mcp.server.elicitation import AcceptedElicitation, ElicitationResult
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ResourceError, ToolError
-from mcp.server.mcpserver.resolve import Resolve, Sample
+from mcp.server.mcpserver.resolve import Elicit, Resolve, Sample
 from mcp_types import (
     CreateMessageResult,
     ModelPreferences,
@@ -17,12 +18,18 @@ from mcp_types import (
     TextContent,
     ToolAnnotations,
 )
+from pydantic import BaseModel
 
 from agent import IncidentReport, IncidentScope
-from agent.models import EvidenceCitation
+from agent.models import EvidenceCitation, ProposedAction
 from mcp_client import connect_to_mcp
 
 TEST_MCP_TIMEOUT_SECONDS = 5
+
+
+class Approval(BaseModel):
+    approve: bool
+    reason: str
 NAMESPACE = "shop"
 OVERVIEW_METRICS = ("request_rate", "error_rate", "latency_p99_ms")
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False)
@@ -70,7 +77,8 @@ PAYMENT_CRASHLOOP: dict[str, Any] = {
 
 
 def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True, with_knowledge: bool = True,
-                          with_write_tool: bool = False) -> MCPServer:
+                          with_write_tool: bool = False, performed: list[str] | None = None) -> MCPServer:
+    """`performed`: offer an approval-gated scale_deployment that records what it changed."""
     server = MCPServer("fake-mcp-server")
 
     if with_knowledge:
@@ -84,11 +92,25 @@ def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True, w
         def topology(namespace: str) -> dict:
             return TOPOLOGY
 
+    if performed is not None:
+        def ask_scale(name: str, replicas: int) -> Elicit:
+            return Elicit(f"Scale deployment {name} to {replicas} replicas?", Approval)
+
+        @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
+        def scale_deployment(name: str, replicas: int, namespace: str = NAMESPACE,
+                             approval: Annotated[ElicitationResult[Approval], Resolve(ask_scale)] = None) -> dict:
+            """Scale a deployment, after approval."""
+            approved = isinstance(approval, AcceptedElicitation) and approval.data.approve
+            if approved:
+                performed.append(f"scaled {name} to {replicas}")
+            return {"operation": "scale_deployment", "deployment": name, "done": approved,
+                    "detail": "scaled" if approved else "not done"}
+
     if with_write_tool:
         @server.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True))
-        def scale_deployment(name: str, replicas: int, namespace: str = NAMESPACE) -> dict:
-            """Scale a deployment."""
-            return {"name": name, "replicas": replicas}
+        def delete_pod(name: str, namespace: str = NAMESPACE) -> dict:
+            """Delete a pod (a write tool the agent doesn't know)."""
+            return {"deleted": name}
 
     @server.tool(annotations=READ_ONLY)
     def list_pods(namespace: str = NAMESPACE, app: str | None = None) -> dict:
@@ -155,7 +177,8 @@ def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True, w
 
 
 def fake_connector(server: MCPServer):
-    return lambda sampling_callback=None: connect_to_mcp(server, TEST_MCP_TIMEOUT_SECONDS, sampling_callback)
+    return lambda sampling_callback=None, elicitation_callback=None: connect_to_mcp(
+        server, TEST_MCP_TIMEOUT_SECONDS, sampling_callback, elicitation_callback)
 
 
 def tool_call_message(*calls: tuple[str, dict]) -> AIMessage:
@@ -175,6 +198,8 @@ def report(cause: str = "payment-service has no pods") -> IncidentReport:
         impact="Orders fail",
         evidence=[EvidenceCitation(source="get_pod_logs", finding="upstream unavailable: payment-service")],
         likely_cause=cause, confidence="high", recommended_actions=["Scale payment-service back up"],
+        proposed_actions=[ProposedAction(operation="scale_deployment", deployment="payment-service", replicas=2,
+                                         revision=None, reason="payment-service has 0 replicas")],
         timeline=["10:00 error rate rises"],
     )
 

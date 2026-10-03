@@ -126,6 +126,18 @@ class DeploymentSpec(BaseModel):
     containers: list[ContainerSpec] = []
 
 
+class OperationResult(BaseModel):
+    """What a write tool did, or why it didn't."""
+
+    operation: str
+    namespace: str
+    deployment: str
+    done: bool
+    detail: str
+    approval: Literal["approved", "rejected", "declined", "cancelled"]
+    approval_reason: str | None = None
+
+
 class ClusterEvent(BaseModel):
     type: str
     reason: str | None = None

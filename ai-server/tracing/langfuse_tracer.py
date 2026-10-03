@@ -111,6 +111,16 @@ class InvestigationTracer:
 
 DISABLED_TRACER = InvestigationTracer()
 
+# Langfuse clients created in this process, so shutdown flushes exactly those (and a
+# process that never traced has nothing to shut down).
+_clients_in_use: list[Langfuse] = []
+
+
+def shutdown_tracers() -> None:
+    """Send buffered spans of every tracer created so far; call when the process stops."""
+    while _clients_in_use:
+        _clients_in_use.pop().shutdown()
+
 
 def _parse_traceparent(traceparent: str | None) -> TraceContext | None:
     match = re.fullmatch(TRACEPARENT_PATTERN, traceparent.strip().lower()) if traceparent else None
@@ -135,4 +145,6 @@ def create_tracer(settings: Settings) -> InvestigationTracer:
         environment=settings.langfuse_environment,
         should_export_span=should_export_span,
     )
+    if client not in _clients_in_use:
+        _clients_in_use.append(client)
     return InvestigationTracer(client, settings.langfuse_public_key, {"llm_model": settings.llm_model})

@@ -2,6 +2,8 @@
 InvestigationState and returns only the keys it changes (see agent/workflow/state.py).
 agent/workflow/graph.py wires these methods into the LangGraph flow."""
 
+from collections.abc import Sequence
+
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
@@ -20,8 +22,10 @@ from constants import Step
 
 
 class InvestigationNodes:
-    def __init__(self, models: ModelRouter, toolbox: MCPToolbox, tools: list[BaseTool], settings: Settings):
+    def __init__(self, models: ModelRouter, toolbox: MCPToolbox, tools: list[BaseTool], settings: Settings,
+                 operations: Sequence[str] = ()):
         self._toolbox = toolbox
+        self._operations = list(operations)
         self._settings = settings
         self._limits = CollectionLimits(
             error_rate_threshold=settings.error_rate_threshold,
@@ -111,6 +115,6 @@ class InvestigationNodes:
         """LLM call 3: a typed IncidentReport from the evidence and the analysis."""
         analysis = "\n\n".join(m.text for m in state["messages"] if isinstance(m, AIMessage) and m.text)
         messages = report_messages(state["question"], state["evidence"], state["notes"], analysis,
-                                   self._findings(state))
+                                   self._findings(state), self._operations)
         report = await invoke_llm(self._report_model, messages)
         return {"report": report, "steps": [Step.WRITE_REPORT], "llm_calls": 1}

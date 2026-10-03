@@ -24,6 +24,17 @@ from cluster.models import (
 from constants import REVISION_ANNOTATION, WARNING_EVENT_TYPE
 
 
+def load_api_client(kubeconfig_path: str) -> client.ApiClient:
+    if not Path(kubeconfig_path).is_file():
+        raise ClusterError(f"No kubeconfig at '{kubeconfig_path}'. Run `make mcp-kubeconfig`.")
+    configuration = client.Configuration()
+    try:
+        config.load_kube_config(config_file=kubeconfig_path, client_configuration=configuration)
+    except ConfigException as error:
+        raise ClusterError(f"Invalid kubeconfig '{kubeconfig_path}': {error}") from error
+    return client.ApiClient(configuration)
+
+
 @contextmanager
 def translate_errors(action: str, namespace: str) -> Iterator[None]:
     try:
@@ -177,14 +188,7 @@ class KubernetesBackend:
 
     @cached_property
     def _api_client(self) -> client.ApiClient:
-        if not Path(self._kubeconfig_path).is_file():
-            raise ClusterError(f"No kubeconfig at '{self._kubeconfig_path}'. Run `make mcp-kubeconfig`.")
-        configuration = client.Configuration()
-        try:
-            config.load_kube_config(config_file=self._kubeconfig_path, client_configuration=configuration)
-        except ConfigException as error:
-            raise ClusterError(f"Invalid kubeconfig '{self._kubeconfig_path}': {error}") from error
-        return client.ApiClient(configuration)
+        return load_api_client(self._kubeconfig_path)
 
     @cached_property
     def _core(self) -> client.CoreV1Api:

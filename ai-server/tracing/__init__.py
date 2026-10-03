@@ -6,6 +6,7 @@ from tracing.langfuse_tracer import (
     TraceLabels,
     create_tracer,
     should_export_span,
+    shutdown_tracers,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "TraceLabels",
     "create_tracer",
     "should_export_span",
+    "shutdown_tracers",
 ]

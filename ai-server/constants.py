@@ -30,6 +30,23 @@ class McpTool(StrEnum):
     LIST_EVENTS = "list_events"
 
 
+class McpOperation(StrEnum):
+    """MCP write tools (Phase 18). Never called by the investigation: only proposed in the
+    report, and run through POST /actions after a human approves."""
+
+    RESTART_DEPLOYMENT = "restart_deployment"
+    SCALE_DEPLOYMENT = "scale_deployment"
+    ROLLBACK_DEPLOYMENT = "rollback_deployment"
+
+
+class ActionStatus(StrEnum):
+    STARTING = "starting"
+    AWAITING_APPROVAL = "awaiting_approval"
+    DONE = "done"            # approved and made
+    NOT_DONE = "not_done"    # rejected, declined or the approval timed out: nothing changed
+    FAILED = "failed"        # refused by the MCP server or failed while changing
+
+
 class McpResource(StrEnum):
     """MCP resource URI templates the investigation reads (the contract with mcp-server)."""
 

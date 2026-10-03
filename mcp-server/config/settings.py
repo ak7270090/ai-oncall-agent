@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # not the cluster-admin kubeconfig.
     kubeconfig_path: str = ".kube/config"
     kube_request_timeout_seconds: float = 10
+    # Write tools (restart / scale / roll back a Deployment), each asking a human for
+    # approval (MCP elicitation). Off by default; they use the separate `mcp-operator`
+    # ServiceAccount (`make mcp-kubeconfig` writes its kubeconfig).
+    enable_write_tools: bool = False
+    operator_kubeconfig_path: str = ".kube/operator-config"
+    max_replicas: int = 5
     allowed_namespaces: list[str] = ["shop"]
     default_namespace: str = "shop"
 

@@ -1,6 +1,7 @@
 """Prompt texts for the three LLM steps, and the functions that build each step's messages."""
 
 import json
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -58,6 +59,13 @@ Check them in that order and pick the first that fits. A rollout often precedes 
 them (config changes restart pods too); mention it in likely_cause, but it does not make
 the category bad_deployment.
 root_cause_service is where the fix belongs (e.g. the database, not the services failing because of it).
+
+proposed_actions: changes that would fix the root cause, chosen ONLY from the available
+operations listed below (none listed: leave it empty). Propose one only when the evidence
+clearly supports it, at most two, aimed at the root-cause service: scale a deployment
+back to its previous replica count (from get_deployment / list_deployments), or roll back
+to the previous revision (its number from get_deployment). A human approves each one
+before anything changes; never propose a change you can't justify from the evidence.
 """
 
 
@@ -89,7 +97,7 @@ def root_cause_messages(question: str, scope: IncidentScope, namespace: str, evi
 
 
 def report_messages(question: str, evidence: list[Evidence], notes: list[str], analysis: str,
-                    findings: list[str]) -> list[BaseMessage]:
+                    findings: list[str], operations: Sequence[str] = ()) -> list[BaseMessage]:
     return [
         SystemMessage(REPORT_PROMPT),
         HumanMessage("\n".join([
@@ -97,6 +105,7 @@ def report_messages(question: str, evidence: list[Evidence], notes: list[str], a
             f"Evidence: {evidence_as_json(evidence)}",
             f"Investigation notes: {'; '.join(notes) or 'none'}",
             _findings_line(findings),
+            f"Available operations: {', '.join(operations) or 'none'}",
             f"Analysis: {analysis or '(no analysis produced)'}",
         ])),
     ]

@@ -27,6 +27,8 @@ class IncidentCase:
     expected_category: str
     expected_service: str
     symptom: PromCondition | PodCondition
+    # The fix a report should propose (operation, deployment), when one is clearly right.
+    expected_action: tuple[str, str] | None = None
 
 
 def _error_rate_query(service: str) -> str:
@@ -42,6 +44,7 @@ def _p99_latency_query(service: str) -> str:
 INCIDENT_CASES: list[IncidentCase] = [
     IncidentCase(
         name="payment-down",
+        expected_action=("scale_deployment", "payment-service"),
         question="Customers say checkout started failing a few minutes ago. What is wrong?",
         expected_category="dependency_unavailable",
         expected_service="payment-service",
@@ -49,6 +52,7 @@ INCIDENT_CASES: list[IncidentCase] = [
     ),
     IncidentCase(
         name="db-down",
+        expected_action=("scale_deployment", "payments-db"),
         question="Checkout errors started a few minutes ago. What is going on?",
         expected_category="dependency_unavailable",
         expected_service="payments-db",
@@ -56,6 +60,7 @@ INCIDENT_CASES: list[IncidentCase] = [
     ),
     IncidentCase(
         name="bad-deploy",
+        expected_action=("rollback_deployment", "payment-service"),
         question="Orders have been failing since the latest release. Please investigate.",
         expected_category="bad_deployment",
         expected_service="payment-service",

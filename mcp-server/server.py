@@ -5,20 +5,25 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from cluster import ClusterBackend, create_backend
+from cluster import ClusterBackend, ClusterOperations, create_backend, create_operations
 from config import Settings, get_settings
 from constants import HEALTH_STATUS_OK
 from observability import MetricsBackend, create_metrics_backend
 from resources import build_completion_handler, build_resources
 from tools import build_tools
+from tools.operations import build_operation_tools
 
 
 def create_server(
-    settings: Settings, cluster: ClusterBackend | None = None, metrics: MetricsBackend | None = None
+    settings: Settings, cluster: ClusterBackend | None = None, metrics: MetricsBackend | None = None,
+    operations: ClusterOperations | None = None,
 ) -> MCPServer:
     server = MCPServer(settings.server_name, version=settings.server_version, log_level=settings.log_level)
     cluster = cluster or create_backend(settings)
-    for tool in build_tools(cluster, metrics or create_metrics_backend(settings), settings):
+    tools = build_tools(cluster, metrics or create_metrics_backend(settings), settings)
+    if settings.enable_write_tools:
+        tools += build_operation_tools(cluster, operations or create_operations(settings), settings)
+    for tool in tools:
         server.add_tool(tool.function, annotations=tool.annotations)
     for resource in build_resources(cluster, settings):
         server.resource(resource.uri, name=resource.name, description=resource.description,

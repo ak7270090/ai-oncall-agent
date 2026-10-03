@@ -22,6 +22,7 @@ resources:
   - services/payment-service.yaml
   - services/order-service.yaml
   - rbac/mcp-server.yaml
+  - rbac/mcp-operator.yaml
   - rbac/prometheus.yaml
 
 secretGenerator:

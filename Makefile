@@ -93,22 +93,26 @@ redeploy: images
 	for svc in $(SERVICES); do kubectl rollout restart deployment/$$svc -n $(NAMESPACE) || exit 1; done
 	kubectl rollout status deployment -n $(NAMESPACE) -l app.kubernetes.io/part-of=shop --timeout=$(ROLLOUT_TIMEOUT)
 
-# Kubeconfigs for the read-only `mcp-server` ServiceAccount: `config` for running on
-# the host, `config.internal` for containers on kind's Docker network.
+# Kubeconfigs for the read-only `mcp-server` ServiceAccount (`config`) and the write
+# `mcp-operator` one (`operator-config`): plain for the host, `.internal` for containers
+# on kind's Docker network.
 mcp-kubeconfig:
 	mkdir -p $(MCP_KUBE_DIR)
 	ca=$$(kubectl config view --raw --minify --context kind-$(CLUSTER) -o jsonpath='{.clusters[0].cluster.certificate-authority-data}') && \
 	server=$$(kubectl config view --minify --context kind-$(CLUSTER) -o jsonpath='{.clusters[0].cluster.server}') && \
-	token=$$(kubectl create token mcp-server -n $(NAMESPACE) --duration=$(MCP_TOKEN_TTL) --context kind-$(CLUSTER)) && \
-	for target in "config $$server" "config.internal $(KIND_API_INTERNAL)"; do \
-		set -- $$target; \
-		printf '%s\n' "apiVersion: v1" "kind: Config" "current-context: mcp-server" \
-			"clusters: [{name: kind, cluster: {server: '$$2', certificate-authority-data: '$$ca'}}]" \
-			"users: [{name: mcp-server, user: {token: '$$token'}}]" \
-			"contexts: [{name: mcp-server, context: {cluster: kind, user: mcp-server, namespace: $(NAMESPACE)}}]" \
-			> $(MCP_KUBE_DIR)/$$1 || exit 1; \
+	for identity in "mcp-server config" "mcp-operator operator-config"; do \
+		set -- $$identity; account=$$1; file=$$2; \
+		token=$$(kubectl create token $$account -n $(NAMESPACE) --duration=$(MCP_TOKEN_TTL) --context kind-$(CLUSTER)) || exit 1; \
+		for target in "$$file $$server" "$$file.internal $(KIND_API_INTERNAL)"; do \
+			set -- $$target; \
+			printf '%s\n' "apiVersion: v1" "kind: Config" "current-context: $$account" \
+				"clusters: [{name: kind, cluster: {server: '$$2', certificate-authority-data: '$$ca'}}]" \
+				"users: [{name: $$account, user: {token: '$$token'}}]" \
+				"contexts: [{name: $$account, context: {cluster: kind, user: $$account, namespace: $(NAMESPACE)}}]" \
+				> $(MCP_KUBE_DIR)/$$1 || exit 1; \
+		done; \
 	done
-	@echo "wrote $(MCP_KUBE_DIR)/config and config.internal (expire in $(MCP_TOKEN_TTL))"
+	@echo "wrote $(MCP_KUBE_DIR)/{config,operator-config}{,.internal} (expire in $(MCP_TOKEN_TTL))"
 
 # Secret env files: generated once from their .example with a random value; gitignored.
 %.env: %.env.example

@@ -93,7 +93,7 @@ async def reanalyze_evidence(
     models: ModelRouter, question: str, scope: IncidentScope, namespace: str,
     evidence: list[Evidence], notes: list[str],
     tracer: InvestigationTracer = DISABLED_TRACER, labels: TraceLabels = NO_LABELS,
-    findings: list[str] | None = None,
+    findings: list[str] | None = None, operations: Sequence[str] = (),
 ) -> ReanalysisResult:
     """find_root_cause + write_report on already-collected evidence, without follow-up
     tool calls. Used by `make replay` to test prompt changes on saved investigations.
@@ -104,6 +104,6 @@ async def reanalyze_evidence(
                                     root_cause_messages(question, scope, namespace, evidence, findings or []))
         report_model = models.for_step(Step.WRITE_REPORT).with_structured_output(IncidentReport)
         report = await invoke_llm(report_model.with_config(traced),
-                                  report_messages(question, evidence, notes, analysis.text, findings or []))
+                                  report_messages(question, evidence, notes, analysis.text, findings or [], operations))
         trace.record_outcome(report.to_markdown(), _report_outcome(report))
     return ReanalysisResult(analysis.text, report, trace.trace_id)

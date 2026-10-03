@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     summarize_logs: bool = False
     max_samplings_per_investigation: int = 6
 
+    # How long an action (POST /actions) waits for a human's approval before giving up.
+    approval_timeout_seconds: float = 600
+
     # Tracing in Langfuse; off while the keys are empty.
     langfuse_public_key: str | None = None
     langfuse_secret_key: SecretStr | None = None

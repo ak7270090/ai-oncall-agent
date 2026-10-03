@@ -6,9 +6,11 @@ services:
     environment:
       MCP_BACKEND: kubernetes
       MCP_KUBECONFIG_PATH: /app/.kube/config
+      MCP_OPERATOR_KUBECONFIG_PATH: /app/.kube/operator-config
       MCP_PROMETHEUS_URL: http://${CLUSTER:-oncall-lab}-control-plane:30090
     volumes:
       - ./mcp-server/.kube/config.internal:/app/.kube/config:ro
+      - ./mcp-server/.kube/operator-config.internal:/app/.kube/operator-config:ro
     networks: [default, kind]
 
 networks:

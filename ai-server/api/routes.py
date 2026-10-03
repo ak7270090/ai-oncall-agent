@@ -27,7 +27,7 @@ from api.schemas import (
     ToolDescription,
     ToolsResponse,
 )
-from constants import HEALTH_STATUS_OK, READY_STATUS, StreamEvent
+from constants import HEALTH_STATUS_OK, READY_STATUS, McpOperation, StreamEvent
 from mcp_client import (
     is_read_only,
     list_all_resource_templates,
@@ -110,14 +110,15 @@ async def _run_investigation(
     sampling = SamplingResponder(dependencies.models, settings.max_samplings_per_investigation)
     async with dependencies.open_mcp(sampling) as mcp_client:
         tools, refused = split_read_only(await list_all_tools(mcp_client))
-        if refused:
-            logger.warning("Not giving the agent tools without a read-only annotation: %s",
-                           ", ".join(t.name for t in refused))
+        operations = [t.name for t in refused if t.name in set(McpOperation)]
+        if unknown := [t.name for t in refused if t.name not in operations]:
+            logger.warning("Not giving the agent tools without a read-only annotation: %s", ", ".join(unknown))
         graph = build_investigation_graph(
             dependencies.models,
             MCPToolbox(mcp_client, tools, on_progress, await list_all_resource_templates(mcp_client)),
             [to_langchain_tool(mcp_client, tool, on_progress) for tool in tools],
             settings,
+            operations,
         )
         result = await run_investigation(
             graph, request.question, settings.max_follow_up_rounds, dependencies.tracer,

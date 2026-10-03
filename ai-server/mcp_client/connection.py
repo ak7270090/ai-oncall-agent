@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 import httpx2
 from mcp import Client
-from mcp.client.session import SamplingFnT
+from mcp.client.session import ElicitationFnT, SamplingFnT
 from mcp.server.mcpserver import MCPServer
 
 
@@ -20,6 +20,7 @@ def _unwrap_exception_group(error: BaseException) -> BaseException:
 @asynccontextmanager
 async def connect_to_mcp(
     server: str | MCPServer, timeout_seconds: float, sampling_callback: SamplingFnT | None = None,
+    elicitation_callback: ElicitationFnT | None = None,
 ) -> AsyncIterator[Client]:
     """Connected MCP client: Streamable HTTP for a URL, in-process for a server object.
 
@@ -27,10 +28,11 @@ async def connect_to_mcp(
     ones raised by the caller's block) in an ExceptionGroup. Unwrap it here so
     callers can catch ordinary exception types. `sampling_callback` answers the server's
     sampling requests (MCP sampling); without it the client doesn't offer sampling.
+    `elicitation_callback` answers the server's questions to the user (approvals).
     """
     try:
-        async with Client(server, read_timeout_seconds=timeout_seconds,
-                          sampling_callback=sampling_callback) as mcp_client:
+        async with Client(server, read_timeout_seconds=timeout_seconds, sampling_callback=sampling_callback,
+                          elicitation_callback=elicitation_callback) as mcp_client:
             yield mcp_client
     except BaseExceptionGroup as group:
         error = _unwrap_exception_group(group)

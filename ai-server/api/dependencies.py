@@ -7,13 +7,19 @@ from typing import Annotated
 from fastapi import Depends
 from mcp import Client
 
+from actions import ActionRegistry
 from agent import ModelRouter, create_model_router
 from config import Settings, get_settings
 from mcp_client import connect_to_mcp
 from tracing import InvestigationTracer, create_tracer
 
-# Opens an MCP session; optionally with a sampling callback (MCP sampling).
+# Opens an MCP session; optionally with sampling / elicitation callbacks.
 MCPConnector = Callable[..., AbstractAsyncContextManager[Client]]
+
+
+@lru_cache
+def get_action_registry() -> ActionRegistry:
+    return ActionRegistry(get_settings().approval_timeout_seconds)
 
 
 @lru_cache
@@ -27,8 +33,8 @@ def get_tracer(settings: Annotated[Settings, Depends(get_settings)]) -> Investig
 
 
 def get_mcp_connector(settings: Annotated[Settings, Depends(get_settings)]) -> MCPConnector:
-    return lambda sampling_callback=None: connect_to_mcp(
-        settings.mcp_server_url, settings.mcp_timeout_seconds, sampling_callback)
+    return lambda sampling_callback=None, elicitation_callback=None: connect_to_mcp(
+        settings.mcp_server_url, settings.mcp_timeout_seconds, sampling_callback, elicitation_callback)
 
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -54,3 +60,4 @@ def get_investigation_dependencies(
 
 
 InvestigationDependenciesDep = Annotated[InvestigationDependencies, Depends(get_investigation_dependencies)]
+ActionRegistryDep = Annotated[ActionRegistry, Depends(get_action_registry)]

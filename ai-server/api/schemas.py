@@ -3,6 +3,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from agent import IncidentReport, IncidentScope
+from agent.models import ProposedAction
 from config import get_settings
 from constants import MAX_TRACE_TAGS
 
@@ -42,6 +43,11 @@ class InvestigateResponse(BaseModel):
     llm_model: str = Field(description="The LLM_MODEL that produced this report")
     trace_id: str | None = Field(default=None, description="Langfuse trace id; null when tracing is off")
     trace_url: str | None = Field(default=None, description="Link to this investigation in Langfuse")
+
+
+class ActionRequest(BaseModel):
+    action: ProposedAction
+    namespace: str | None = Field(default=None, description="Defaults to the configured namespace")
 
 
 class ToolDescription(BaseModel):

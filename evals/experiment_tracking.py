@@ -88,6 +88,18 @@ def score_correctness(*, output: dict[str, Any] | None, expected_output: dict[st
     ]
 
 
+def proposes_expected_action(report: dict[str, Any], expected: list[str] | None) -> bool | None:
+    """Whether the report proposes the expected (operation, deployment); None if none is expected."""
+    if not expected:
+        return None
+    return any([a.get("operation"), a.get("deployment")] == list(expected) for a in report.get("proposed_actions") or [])
+
+
+def score_action(*, output: dict[str, Any] | None, expected_output: dict[str, Any], **_: Any) -> list[Evaluation]:
+    graded = output and proposes_expected_action(output["report"], expected_output.get("action"))
+    return [] if graded is None else [Evaluation(name="action_correct", value=float(graded), data_type="BOOLEAN")]
+
+
 def score_confidence(*, output: dict[str, Any] | None, **_: Any) -> list[Evaluation]:
     confidence = output and output["report"].get("confidence")
     return [Evaluation(name="confidence", value=confidence, data_type="CATEGORICAL")] if confidence else []
@@ -149,7 +161,7 @@ class ExperimentTracker:
         self._safely(f"record {case.name}", lambda: self._client.run_experiment(
             name=self.experiment_name, run_name=f"{self.experiment_name} ({self._started}){run_suffix}",
             description=f"{self._kind} of {self._llm_model} at commit {self._commit}",
-            data=[item], task=task, evaluators=[score_correctness, score_confidence], max_concurrency=1,
+            data=[item], task=task, evaluators=[score_correctness, score_confidence, score_action], max_concurrency=1,
             metadata={"kind": self._kind, "llm_model": self._llm_model, "commit": self._commit},
         ))
         if "error" in outcome:
@@ -166,7 +178,8 @@ class ExperimentTracker:
             self._items[case.name] = self._client.create_dataset_item(
                 dataset_name=DATASET_NAME, id=_dataset_item_id(case),
                 input={"question": case.question},
-                expected_output={"cause_category": case.expected_category, "root_cause_service": case.expected_service},
+                expected_output={"cause_category": case.expected_category, "root_cause_service": case.expected_service,
+                                 "action": list(case.expected_action) if case.expected_action else None},
                 metadata={"incident": case.name},
             )
 

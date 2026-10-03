@@ -64,8 +64,8 @@ async def test_no_knowledge_when_switched_off_or_not_offered(settings, server_op
 async def test_only_read_only_tools_are_kept():
     async with fake_connector(build_fake_mcp_server(PAYMENT_DOWN, with_write_tool=True))() as mcp_client:
         allowed, refused = split_read_only(await list_all_tools(mcp_client))
-    assert [t.name for t in refused] == ["scale_deployment"]
-    assert "scale_deployment" not in {t.name for t in allowed} and "list_pods" in {t.name for t in allowed}
+    assert [t.name for t in refused] == ["delete_pod"]
+    assert "delete_pod" not in {t.name for t in allowed} and "list_pods" in {t.name for t in allowed}
 
 
 def test_api_lists_annotations_and_keeps_write_tools_from_the_agent(caplog):
@@ -80,6 +80,6 @@ def test_api_lists_annotations_and_keeps_write_tools_from_the_agent(caplog):
             assert client.post("/investigate", json={"question": "Checkout is failing"}).status_code == 200
     finally:
         app.dependency_overrides.clear()
-    assert tools["scale_deployment"]["read_only"] is False and tools["scale_deployment"]["destructive"] is True
+    assert tools["delete_pod"]["read_only"] is False and tools["delete_pod"]["destructive"] is True
     assert tools["list_pods"]["read_only"] is True
-    assert "scale_deployment" in caplog.text
+    assert "delete_pod" in caplog.text

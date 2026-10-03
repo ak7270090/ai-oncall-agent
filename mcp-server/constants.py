@@ -19,6 +19,10 @@ NAME_PATTERN = r"^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$"
 # Kubernetes vocabulary.
 REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
 WARNING_EVENT_TYPE = "Warning"
+# Set on the pod template to make a Deployment restart its pods (what `kubectl rollout restart` does).
+RESTARTED_AT_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
+# Label every ReplicaSet adds to its pod template; dropped when restoring an old template.
+POD_TEMPLATE_HASH_LABEL = "pod-template-hash"
 
 # Metrics offered by get_metrics, and the unit each is reported in.
 class Metric(StrEnum):

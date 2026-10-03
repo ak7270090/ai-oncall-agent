@@ -28,6 +28,12 @@ READ_ONLY_TOOL = ToolAnnotations(read_only_hint=True, destructive_hint=False, id
                                  open_world_hint=True)
 
 
+def change_tool(idempotent: bool) -> ToolAnnotations:
+    """Annotations of a tool that changes the cluster (MCP clients ask before calling these)."""
+    return ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=idempotent,
+                           open_world_hint=True)
+
+
 def namespace_guard(settings: Settings) -> tuple[Any, Callable[[str], None]]:
     """Annotated type for a `namespace` tool argument plus the allowlist check."""
     allowed = ", ".join(settings.allowed_namespaces)

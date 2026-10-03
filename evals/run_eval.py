@@ -25,6 +25,7 @@ sys.path.insert(0, str(REPO_ROOT / "ai-server"))
 from experiment_tracking import (  # noqa: E402
     ExperimentTracker,
     current_traceparent,
+    proposes_expected_action,
     normalized_service,
     use_safe_event_loop,
 )
@@ -59,6 +60,7 @@ class Result:
     checks: int | None
     seconds: float
     likely_cause: str
+    action: str = "-"  # did the report propose the expected fix: ok / missing / - (none expected)
     error: str | None = None
     response: dict | None = None  # full /investigate response incl. raw evidence, for `make replay`
 
@@ -117,6 +119,11 @@ def investigate(incident: IncidentCase, tracker: ExperimentTracker) -> dict:
     }, INVESTIGATE_TIMEOUT_SECONDS, headers={"traceparent": traceparent} if traceparent else None)
 
 
+def _action_grade(incident: IncidentCase, report: dict) -> str:
+    graded = proposes_expected_action(report, list(incident.expected_action) if incident.expected_action else None)
+    return "-" if graded is None else "ok" if graded else "missing"
+
+
 def run_incident(incident: IncidentCase, tracker: ExperimentTracker) -> Result:
     expected = f"{incident.expected_category} / {incident.expected_service}"
     started = time.monotonic()
@@ -130,17 +137,18 @@ def run_incident(incident: IncidentCase, tracker: ExperimentTracker) -> Result:
         passed, got = grade(incident, report)
         return Result(incident.name, passed, expected, got, report.get("confidence"), body.get("llm_calls"),
                       len(body.get("evidence", [])), round(time.monotonic() - started, 1), report.get("likely_cause", ""),
-                      response=body)
+                      response=body,
+                      action=_action_grade(incident, report))
     except Exception as error:
         return Result(incident.name, False, expected, "-", None, None, None,
                       round(time.monotonic() - started, 1), "", error=repr(error))
 
 
 def print_table(results: list[Result]) -> None:
-    print(f"\n{'incident':15} {'result':6} {'expected':40} {'got':40} {'conf':6} {'llm':>3} {'checks':>6} {'secs':>6}")
+    print(f"\n{'incident':15} {'result':6} {'expected':40} {'got':40} {'conf':6} {'action':7} {'llm':>3} {'checks':>6} {'secs':>6}")
     for r in results:
         print(f"{r.incident:15} {'PASS' if r.passed else 'FAIL':6} {r.expected:40} {r.got:40} "
-              f"{r.confidence or '-':6} {r.llm_calls or '-':>3} {r.checks or '-':>6} {r.seconds:>6}")
+              f"{r.confidence or '-':6} {r.action:7} {r.llm_calls or '-':>3} {r.checks or '-':>6} {r.seconds:>6}")
         if r.error:
             print(f"{'':15} error: {r.error}")
     print(f"\n{sum(r.passed for r in results)}/{len(results)} passed")

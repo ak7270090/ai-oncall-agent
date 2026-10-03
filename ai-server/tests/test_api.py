@@ -102,7 +102,7 @@ def test_missing_llm_credentials_returns_502(client, monkeypatch):
 
 
 def test_unreachable_mcp_returns_503(client):
-    app.dependency_overrides[get_mcp_connector] = lambda: lambda sampling_callback=None: connect_to_mcp(UNREACHABLE_MCP_URL, 5)
+    app.dependency_overrides[get_mcp_connector] = lambda: lambda sampling_callback=None, elicitation_callback=None: connect_to_mcp(UNREACHABLE_MCP_URL, 5)
     assert client.get("/ready").status_code == 503
     assert client.get("/tools").status_code == 503
     assert client.post("/investigate", json={"question": "hi"}).status_code == 503
