@@ -91,7 +91,7 @@ Sizes in the roadmap are rough: **S** about a day, **M** two to three days, **L*
 | 15 | Advanced MCP | Progress, logging, cancellation, live streaming | M | – | Done (MCP logging deprecated, not used) |
 | 16 | Advanced MCP | Completions and tool annotations | S | – | Done |
 | 17 | Advanced MCP | Sampling + model routing: cheap model for log summaries | L | 15 | Done |
-| 18 | Write actions | Write tools + human approval through elicitation | L | 16 | Not started |
+| 18 | Write actions | Write tools + human approval through elicitation | L | 16 | Done |
 | 19 | Security | MCP authentication (tokens, scopes) | M | 18 | Not started |
 | 20 | Security | Tool-level authorization + audit log | M | 19 | Not started |
 | 21 | Security | Hardening (prompt injection, limits, TLS, policies) | M | 20 | Not started |
@@ -447,7 +447,16 @@ routing across providers by live price or availability.
 
 ## Part C — Write actions and security (Phases 18–22)
 
-### Phase 18 — Write tools with human approval (elicitation)
+### Phase 18 — Write tools with human approval (elicitation) (done)
+
+Built (README "Changes with human approval"); endpoints are `POST /actions`,
+`GET /actions/{id}`, `POST /actions/{id}/approval`. Verified live: rejected → unchanged,
+approved rollback → error rate 100% → 0%. The live test found a real bug: a strategic
+merge patch kept `FAULT_MODE=error` from the bad release; rollback now replaces the pod
+template (JSON Patch). Eval with write tools offered (two runs): 6/6 and 6/6 diagnoses, high
+confidence; proposed fixes 3/3 and 2/3 (payment-down once proposed nothing, hedging
+that 0 replicas might be intended). Proposals never ran without approval.
+
 
 **Why:** after finding the cause, the next on-call step is fixing it (roll back, scale
 up, restart). The agent must never do that on its own.

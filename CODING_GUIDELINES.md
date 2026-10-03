@@ -358,3 +358,18 @@ message.
   annotated read-only; a new tool without annotations is invisible to the agent.
 - Knowledge is optional evidence: a missing runbook is a note, and live evidence wins
   over documentation.
+
+## 23. Changes to the cluster (write tools)
+
+- The investigation is read-only. Changes are proposed in the report and run only through
+  `POST /actions`, one at a time, each approved by a human (MCP elicitation).
+- A write tool validates every argument before asking (exists, in bounds), asks a question
+  built only from its arguments (it must be identical on the retry round), and does
+  nothing unless the answer is an explicit approval. Its result says what was or wasn't
+  done.
+- Write tools are off by default, annotated destructive, and run with their own
+  ServiceAccount with the fewest verbs that work; the read-only account never gains write
+  rights.
+- Replace, don't merge, when restoring a known state (rollback: JSON Patch replace of
+  the pod template).
+- Test write paths on the real cluster too: merge semantics and RBAC only show there.

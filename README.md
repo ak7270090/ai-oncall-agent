@@ -354,6 +354,49 @@ one full `make eval`.
 symptoms show up, and clear, within seconds rather than minutes. The eval waits
 20s after a symptom appears (like an alert's `for:`) before asking the agent.
 
+## Changes with human approval (Phase 18)
+
+The agent can now **propose** fixes; a human **approves** each one before anything
+changes. The investigation itself never changes the cluster.
+
+```text
+POST /investigate  → report.proposed_actions: [{"operation": "rollback_deployment",
+                      "deployment": "payment-service", "revision": 1, "reason": "..."}]
+POST /actions {"action": <one proposed action>}         → {"id": "53c3…", "status": "starting"}
+GET  /actions/53c3…  → {"status": "awaiting_approval",
+                        "question": "Roll back deployment payment-service in shop to revision 1
+                                     (image payment-service:v1)?"}
+POST /actions/53c3…/approval {"approve": true, "reason": "v2 breaks payments"}
+GET  /actions/53c3…  → {"status": "done", "result": {"detail": "Rolled back deployment ..."}}
+```
+
+- **Write tools** (`mcp-server/tools/operations.py`, off unless `MCP_ENABLE_WRITE_TOOLS=true`):
+  `restart_deployment`, `scale_deployment` (0–`MCP_MAX_REPLICAS`), `rollback_deployment`,
+  annotated `destructiveHint=true`, so the investigating agent never gets them (Phase 16).
+- **Approval = MCP elicitation:** each tool first checks its arguments (deployment exists,
+  revision exists, replicas in bounds), then asks the client: "Roll back … to revision 1
+  (image …)?" with `approve` + `reason`. Approved → the change is made; rejected,
+  declined, cancelled or no answer → nothing changes, and the result says so. A client
+  that can't ask a human can't trigger a change at all.
+- **The waiting** (`ai-server/actions/`): `POST /actions` returns at once; the action waits
+  in `awaiting_approval` until `POST /actions/{id}/approval` or `APPROVAL_TIMEOUT_SECONDS`.
+  With protocol 2026-07-28 the server returns "input required" and holds no connection
+  while a human thinks. State is in memory (one AI server process).
+- **Separate permissions:** the write tools use the `mcp-operator` ServiceAccount (patch
+  Deployments and their scale, read ReplicaSets, in `shop` only;
+  `kubernetes/base/rbac/mcp-operator.yaml`). `make mcp-kubeconfig` writes its kubeconfig.
+  The read-only `mcp-server` account still can't change anything.
+- **Rollback** replaces the Deployment's pod template with the target revision's (JSON
+  Patch), like `kubectl rollout undo`.
+- The eval grades proposed fixes (`action` column, Langfuse score `action_correct`) for the
+  incidents with an obvious one: payment-down and db-down → scale back up, bad-deploy →
+  roll back.
+
+Verified on the kind cluster: bad-deploy → the agent proposed "roll back payment-service to
+revision 1" → rejected: nothing changed → approved: rolled back, error rate 100% → 0%.
+Eval (two runs): diagnoses 6/6 twice; proposed fixes 3/3 and 2/3 (once the agent proposed
+nothing for payment-down, hedging that 0 replicas might be intended).
+
 ## Team knowledge as MCP resources (Phase 13)
 
 Tools return *live* data. An experienced engineer also knows things no metric shows:
@@ -647,5 +690,6 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Progress | `ctx.report_progress` in `get_service_overview`; the client opts in per call with `progress_callback` (`mcp_client/progress.py`). |
 | Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-server/resources/`); read by the client with `read_resource`. |
 | Annotations / completions | `readOnlyHint` on every tool, enforced by the client; completions for resource-template arguments. |
+| Elicitation | Write tools ask for approval with `Resolve`/`Elicit`; the AI server answers via `Client(elicitation_callback=…)` from `POST /actions/{id}/approval`. |
 | Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`agent/llm/sampling.py`). |
 | Host / client | The AI server is the host. `mcp.Client` is the client. |
