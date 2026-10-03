@@ -1,5 +1,6 @@
-"""Tool results. Deliberately small: only the fields an on-call engineer needs,
-never environment variables, volumes or other parts of a spec that may hold secrets."""
+"""Tool and resource results. Deliberately small: only the fields an on-call engineer
+needs; never environment variable values, volumes or other parts of a spec that may
+hold secrets (env var *names* only)."""
 
 from datetime import datetime
 from typing import Literal
@@ -99,6 +100,28 @@ class DeploymentDetail(DeploymentSummary):
     namespace: str
     conditions: list[Condition] = []
     revisions: list[ReplicaSetRevision] = []
+
+
+class ContainerSpec(BaseModel):
+    name: str
+    image: str
+    env_names: list[str] = []
+    cpu_request: str | None = None
+    cpu_limit: str | None = None
+    memory_request: str | None = None
+    memory_limit: str | None = None
+    readiness_probe: str | None = None
+    liveness_probe: str | None = None
+
+
+class DeploymentSpec(BaseModel):
+    """What a deployment is configured to run (the desired state), not how it's doing."""
+
+    namespace: str
+    name: str
+    replicas: int
+    strategy: str | None = None
+    containers: list[ContainerSpec] = []
 
 
 class ClusterEvent(BaseModel):

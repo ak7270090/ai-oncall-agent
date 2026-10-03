@@ -57,4 +57,9 @@ LOG_SUMMARY_SPEED_PRIORITY = 0.7
 LOG_SUMMARY_INTELLIGENCE_PRIORITY = 0.2
 LOG_LINES_KEPT_WITH_SUMMARY = 5
 
+# MCP resource URI templates (Phase 13). The agent reads them by these names too.
+RUNBOOK_URI = "runbook://{service}"
+TOPOLOGY_URI = "topology://{namespace}"
+DEPLOYMENT_SPEC_URI = "k8s://{namespace}/deployments/{name}"
+
 HEALTH_STATUS_OK = "ok"

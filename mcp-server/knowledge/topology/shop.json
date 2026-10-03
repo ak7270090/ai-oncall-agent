@@ -1,0 +1,6 @@
+{
+  "order-service": {"calls": ["user-service", "payment-service"], "entry_point": true},
+  "user-service": {"calls": []},
+  "payment-service": {"calls": ["payments-db"]},
+  "payments-db": {"calls": [], "kind": "postgres"}
+}

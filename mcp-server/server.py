@@ -9,6 +9,7 @@ from cluster import ClusterBackend, create_backend
 from config import Settings, get_settings
 from constants import HEALTH_STATUS_OK
 from observability import MetricsBackend, create_metrics_backend
+from resources import build_completion_handler, build_resources
 from tools import build_tools
 
 
@@ -16,9 +17,13 @@ def create_server(
     settings: Settings, cluster: ClusterBackend | None = None, metrics: MetricsBackend | None = None
 ) -> MCPServer:
     server = MCPServer(settings.server_name, version=settings.server_version, log_level=settings.log_level)
-    tools = build_tools(cluster or create_backend(settings), metrics or create_metrics_backend(settings), settings)
-    for tool in tools:
-        server.add_tool(tool)
+    cluster = cluster or create_backend(settings)
+    for tool in build_tools(cluster, metrics or create_metrics_backend(settings), settings):
+        server.add_tool(tool.function, annotations=tool.annotations)
+    for resource in build_resources(cluster, settings):
+        server.resource(resource.uri, name=resource.name, description=resource.description,
+                        mime_type=resource.mime_type)(resource.read)
+    server.completion()(build_completion_handler(cluster, settings))
 
     @server.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:

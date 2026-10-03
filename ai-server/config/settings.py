@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     max_services_to_inspect: int = 3
     log_lines: int = 50
     max_follow_up_rounds: int = 2
+    # Read the team's knowledge from MCP resources: the service map and the runbooks of
+    # flagged services become evidence.
+    use_service_knowledge: bool = True
     # Ask the MCP server to summarize long logs with the client's LLM (MCP sampling).
     summarize_logs: bool = False
     max_samplings_per_investigation: int = 6

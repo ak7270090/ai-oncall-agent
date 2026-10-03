@@ -17,6 +17,9 @@ from cluster.models import (
 from constants import Metric
 
 NAMESPACE = "shop"
+CPU_LIMIT = "250m"
+# Env var names per deployment (values are never exposed).
+ENV_NAMES = {"payment-service": ["DB_HOST", "DB_PASSWORD", "FAULT_MODE"]}
 
 
 def _utc_time(hour: int, minute: int, day: int = 27) -> datetime:

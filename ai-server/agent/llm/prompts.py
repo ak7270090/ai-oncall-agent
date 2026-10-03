@@ -25,6 +25,9 @@ Work out the most likely root cause:
 - Distinguish symptoms from causes, and current problems from old or routine events
   (e.g. probe failures while pods were starting).
 - "Computed findings" are facts derived by code from the evidence; don't contradict them.
+- Evidence from `topology` (who calls whom) and `runbook` (per service) is the team's
+  documented knowledge: use it to interpret the live evidence; when they disagree, the
+  live evidence wins.
 - Explain what is happening NOW. Compare log and event timestamps with the current
   time, and a metric's `latest` value with its `max`: errors that stopped minutes ago
   belong to an earlier, resolved problem and are not the cause of the current one.

@@ -13,8 +13,10 @@ from cluster.backend import ClusterError, no_previous_container_error, not_found
 from cluster.models import (
     ClusterEvent,
     Condition,
+    ContainerSpec,
     ContainerStatus,
     DeploymentDetail,
+    DeploymentSpec,
     DeploymentSummary,
     PodDetail,
     ReplicaSetRevision,
@@ -128,6 +130,31 @@ def _to_cluster_event(raw) -> ClusterEvent:
     )
 
 
+def _describe_probe(probe) -> str | None:
+    if probe is None:
+        return None
+    if probe.http_get:
+        target = f"http GET {probe.http_get.path}:{probe.http_get.port}"
+    elif probe.tcp_socket:
+        target = f"tcp :{probe.tcp_socket.port}"
+    elif getattr(probe, "_exec", None):  # the client names the `exec` field `_exec`
+        target = "exec " + " ".join(probe._exec.command or [])
+    else:
+        target = "probe"
+    return f"{target} every {probe.period_seconds or 10}s, fails after {probe.failure_threshold or 3}"
+
+
+def _to_container_spec(container) -> ContainerSpec:
+    return ContainerSpec(
+        name=container.name,
+        image=container.image,
+        env_names=sorted({env.name for env in container.env or []}),
+        **_to_resource_fields(container),
+        readiness_probe=_describe_probe(container.readiness_probe),
+        liveness_probe=_describe_probe(container.liveness_probe),
+    )
+
+
 def _newest_first_sort_key(value: datetime | None) -> float:
     return -value.timestamp() if value else 0.0
 
@@ -211,3 +238,14 @@ class KubernetesBackend:
         with translate_errors("list events", namespace):
             events = self._core.list_namespaced_event(namespace, field_selector=selector, _request_timeout=self._timeout)
         return sorted((_to_cluster_event(e) for e in events.items), key=lambda e: _newest_first_sort_key(e.last_seen))[:limit]
+
+    def get_deployment_spec(self, namespace: str, name: str) -> DeploymentSpec:
+        with translate_errors(f"get deployment '{name}'", namespace):
+            raw = self._apps.read_namespaced_deployment(name, namespace, _request_timeout=self._timeout)
+        return DeploymentSpec(
+            namespace=namespace,
+            name=raw.metadata.name,
+            replicas=raw.spec.replicas or 0,
+            strategy=raw.spec.strategy.type if raw.spec.strategy else None,
+            containers=[_to_container_spec(c) for c in raw.spec.template.spec.containers],
+        )

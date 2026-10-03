@@ -1,5 +1,6 @@
 from langchain_core.tools import StructuredTool, ToolException
 from mcp import Client
+from mcp.shared.exceptions import MCPError
 from mcp.types import CallToolResult, TextContent, Tool
 
 from mcp_client.progress import ToolProgressCallback, progress_callback_for
@@ -18,6 +19,21 @@ async def list_all_tools(mcp_client: Client) -> list[Tool]:
         cursor = page.next_cursor
         if not cursor:
             return tools
+
+
+async def list_all_resource_templates(mcp_client: Client) -> list[str]:
+    """URI templates of the server's resources; [] when the server offers no resources."""
+    templates: list[str] = []
+    cursor = None
+    try:
+        while True:
+            page = await mcp_client.list_resource_templates(cursor=cursor)
+            templates.extend(t.uri_template for t in page.resource_templates)
+            cursor = page.next_cursor
+            if not cursor:
+                return templates
+    except MCPError:
+        return []
 
 
 def to_langchain_tool(mcp_client: Client, tool: Tool, on_progress: ToolProgressCallback | None = None) -> StructuredTool:

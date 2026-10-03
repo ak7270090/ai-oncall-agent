@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from typing import Annotated
 
 from mcp.server.mcpserver import Context
@@ -24,7 +23,7 @@ from constants import (
     MAX_EVENT_LIMIT,
     MAX_LOG_LINES,
 )
-from tools.helpers import namespace_guard
+from tools.helpers import READ_ONLY_TOOL, ToolDefinition, namespace_guard
 from tools.log_summary import (
     RecentLogs,
     build_log_summary_request,
@@ -33,7 +32,7 @@ from tools.log_summary import (
 )
 
 
-def build_kubernetes_tools(backend: ClusterBackend, settings: Settings) -> list[Callable]:
+def build_kubernetes_tools(backend: ClusterBackend, settings: Settings) -> list[ToolDefinition]:
     Namespace, require_allowed = namespace_guard(settings)
     recent_logs = RecentLogs(backend, settings.log_cache_seconds)
 
@@ -109,4 +108,4 @@ def build_kubernetes_tools(backend: ClusterBackend, settings: Settings) -> list[
         require_allowed(namespace)
         return EventList(namespace=namespace, events=backend.list_events(namespace, warnings_only, limit))
 
-    return [list_pods, get_pod_status, get_pod_logs, list_deployments, get_deployment, list_events]
+    return [ToolDefinition(tool, READ_ONLY_TOOL) for tool in (list_pods, get_pod_status, get_pod_logs, list_deployments, get_deployment, list_events)]

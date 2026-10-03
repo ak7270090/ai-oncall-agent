@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,6 +37,12 @@ class Settings(BaseSettings):
     log_summary_min_lines: int = 40
     log_summary_max_tokens: int = 500
     log_cache_seconds: float = 30
+
+    # Team knowledge published as MCP resources: runbooks/<service>.md and
+    # topology/<namespace>.json (default: mcp-server/knowledge).
+    knowledge_dir: Path = Path(__file__).resolve().parents[1] / "knowledge"
+    # Most values returned for one completion request.
+    max_completion_values: int = 100
 
 
 @lru_cache

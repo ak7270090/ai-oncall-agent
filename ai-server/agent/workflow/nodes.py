@@ -30,6 +30,7 @@ class InvestigationNodes:
             max_services=settings.max_services_to_inspect,
             log_lines=settings.log_lines,
             summarize_logs=settings.summarize_logs,
+            use_service_knowledge=settings.use_service_knowledge,
         )
         # Each LLM step gets the model tier the router assigns it (FAST_MODEL_STEPS).
         self._scope_model = models.for_step(Step.EXTRACT_INCIDENT_SCOPE).with_structured_output(IncidentScope)
@@ -53,7 +54,7 @@ class InvestigationNodes:
 
     async def collect_namespace_overview(self, state: InvestigationState) -> dict:
         notes: list[str] = []
-        found = await collection_steps.collect_namespace_overview(self._toolbox, state["namespace"], notes)
+        found = await collection_steps.collect_namespace_overview(self._toolbox, state["namespace"], self._limits, notes)
         return {"evidence": found, "notes": notes, "steps": [Step.COLLECT_NAMESPACE_OVERVIEW]}
 
     async def inspect_flagged_problems(self, state: InvestigationState) -> dict:
@@ -65,7 +66,7 @@ class InvestigationNodes:
     async def trace_failing_dependencies(self, state: InvestigationState) -> dict:
         notes: list[str] = []
         found = await collection_steps.trace_failing_dependencies(
-            self._toolbox, state["namespace"], state["evidence"], state["scope"].window_minutes, notes)
+            self._toolbox, state["namespace"], state["evidence"], state["scope"].window_minutes, self._limits, notes)
         return {"evidence": found, "notes": notes, "steps": [Step.TRACE_FAILING_DEPENDENCIES]}
 
     # --- LLM: reason, optionally asking for more tools -------------------------------------

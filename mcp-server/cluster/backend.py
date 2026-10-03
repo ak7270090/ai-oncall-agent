@@ -2,7 +2,13 @@ from typing import Protocol
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from cluster.models import ClusterEvent, DeploymentDetail, DeploymentSummary, PodDetail
+from cluster.models import (
+    ClusterEvent,
+    DeploymentDetail,
+    DeploymentSpec,
+    DeploymentSummary,
+    PodDetail,
+)
 
 
 class ClusterError(ToolError):
@@ -33,3 +39,5 @@ class ClusterBackend(Protocol):
     def get_deployment(self, namespace: str, name: str) -> DeploymentDetail: ...
 
     def list_events(self, namespace: str, warnings_only: bool, limit: int) -> list[ClusterEvent]: ...
+
+    def get_deployment_spec(self, namespace: str, name: str) -> DeploymentSpec: ...

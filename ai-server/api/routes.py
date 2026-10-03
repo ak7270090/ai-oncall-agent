@@ -28,7 +28,13 @@ from api.schemas import (
     ToolsResponse,
 )
 from constants import HEALTH_STATUS_OK, READY_STATUS, StreamEvent
-from mcp_client import list_all_tools, to_langchain_tool
+from mcp_client import (
+    is_read_only,
+    list_all_resource_templates,
+    list_all_tools,
+    split_read_only,
+    to_langchain_tool,
+)
 from streaming import ErrorEvent, InvestigationEvents
 from tracing import TraceLabels
 
@@ -55,7 +61,9 @@ async def list_tools(open_mcp: MCPConnectorDep) -> ToolsResponse:
     async with open_mcp() as mcp_client:
         tools = await list_all_tools(mcp_client)
     return ToolsResponse(tools=[
-        ToolDescription(name=t.name, description=t.description or "", input_schema=t.input_schema)
+        ToolDescription(name=t.name, description=t.description or "", input_schema=t.input_schema,
+                        read_only=is_read_only(t),
+                        destructive=t.annotations.destructive_hint if t.annotations else None)
         for t in tools
     ])
 
@@ -101,10 +109,13 @@ async def _run_investigation(
     on_progress = events.on_tool_progress if events else None
     sampling = SamplingResponder(dependencies.models, settings.max_samplings_per_investigation)
     async with dependencies.open_mcp(sampling) as mcp_client:
-        tools = await list_all_tools(mcp_client)
+        tools, refused = split_read_only(await list_all_tools(mcp_client))
+        if refused:
+            logger.warning("Not giving the agent tools without a read-only annotation: %s",
+                           ", ".join(t.name for t in refused))
         graph = build_investigation_graph(
             dependencies.models,
-            MCPToolbox(mcp_client, tools, on_progress),
+            MCPToolbox(mcp_client, tools, on_progress, await list_all_resource_templates(mcp_client)),
             [to_langchain_tool(mcp_client, tool, on_progress) for tool in tools],
             settings,
         )

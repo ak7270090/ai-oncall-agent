@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from typing import Annotated
 
 import anyio
@@ -16,10 +15,15 @@ from constants import (
 )
 from observability import MetricsBackend
 from observability.models import MetricSeries, ServiceOverview
-from tools.helpers import namespace_guard, query_progress_reporter
+from tools.helpers import (
+    READ_ONLY_TOOL,
+    ToolDefinition,
+    namespace_guard,
+    query_progress_reporter,
+)
 
 
-def build_observability_tools(backend: MetricsBackend, settings: Settings) -> list[Callable]:
+def build_observability_tools(backend: MetricsBackend, settings: Settings) -> list[ToolDefinition]:
     Namespace, require_allowed = namespace_guard(settings)
     ServiceName = Annotated[str, Field(pattern=NAME_PATTERN, description="Service name, e.g. payment-service")]
 
@@ -56,4 +60,4 @@ def build_observability_tools(backend: MetricsBackend, settings: Settings) -> li
             samples=backend.metric_history(namespace, service, metric, minutes),
         )
 
-    return [get_service_overview, get_metrics]
+    return [ToolDefinition(tool, READ_ONLY_TOOL) for tool in (get_service_overview, get_metrics)]

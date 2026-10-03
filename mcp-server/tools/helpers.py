@@ -1,15 +1,31 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from itertools import count
 from typing import Annotated, Any
 
 import anyio
 from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp_types import ToolAnnotations
 from pydantic import Field
 
 from config import Settings
 from constants import Metric
 from observability.backend import QueryDone
+
+
+@dataclass(frozen=True)
+class ToolDefinition:
+    """A tool function plus its annotations: hints to clients about what the tool does."""
+
+    function: Callable
+    annotations: ToolAnnotations
+
+
+# Reads the cluster or Prometheus, changes nothing, same answer when repeated soon after;
+# talks to systems outside the server (open world).
+READ_ONLY_TOOL = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True,
+                                 open_world_hint=True)
 
 
 def namespace_guard(settings: Settings) -> tuple[Any, Callable[[str], None]]:

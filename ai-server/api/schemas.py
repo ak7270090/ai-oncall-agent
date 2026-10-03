@@ -48,6 +48,8 @@ class ToolDescription(BaseModel):
     name: str
     description: str
     input_schema: dict
+    read_only: bool = Field(description="Annotated read-only by the MCP server; only these are given to the agent")
+    destructive: bool | None = Field(default=None, description="The server's destructiveHint, if set")
 
 
 class ToolsResponse(BaseModel):

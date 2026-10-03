@@ -1,7 +1,9 @@
 from cluster.backend import no_previous_container_error, not_found_error
 from cluster.models import (
     ClusterEvent,
+    ContainerSpec,
     DeploymentDetail,
+    DeploymentSpec,
     DeploymentSummary,
     PodDetail,
     summarize_deployment,
@@ -43,3 +45,11 @@ class FakeClusterBackend:
             return []
         events = [e for e in incident_data.EVENTS if not warnings_only or e.type == WARNING_EVENT_TYPE]
         return events[:limit]
+
+    def get_deployment_spec(self, namespace: str, name: str) -> DeploymentSpec:
+        deployment = self.get_deployment(namespace, name)
+        return DeploymentSpec(
+            namespace=namespace, name=name, replicas=deployment.desired_replicas, strategy="RollingUpdate",
+            containers=[ContainerSpec(name=name, image=deployment.image, env_names=incident_data.ENV_NAMES.get(name, []),
+                                      cpu_limit=incident_data.CPU_LIMIT)],
+        )

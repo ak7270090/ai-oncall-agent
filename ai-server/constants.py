@@ -30,6 +30,13 @@ class McpTool(StrEnum):
     LIST_EVENTS = "list_events"
 
 
+class McpResource(StrEnum):
+    """MCP resource URI templates the investigation reads (the contract with mcp-server)."""
+
+    RUNBOOK = "runbook://{service}"
+    TOPOLOGY = "topology://{namespace}"
+
+
 class StreamEvent(StrEnum):
     """Event types of POST /investigate/stream (the SSE `event:` field)."""
 

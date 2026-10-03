@@ -18,7 +18,7 @@ from agent.evidence.helpers import (
 )
 from agent.evidence.mcp_toolbox import MCPToolbox
 from agent.models import Evidence, IncidentScope
-from constants import SUMMARIZE_ARGUMENT, McpTool, Metric, Step
+from constants import SUMMARIZE_ARGUMENT, McpResource, McpTool, Metric, Step
 
 ToolCall = tuple[McpTool, dict]
 
@@ -31,6 +31,7 @@ class CollectionLimits:
     max_services: int
     log_lines: int
     summarize_logs: bool = False
+    use_service_knowledge: bool = False
 
 
 def _log_arguments(namespace: str, pod: str, previous: bool, limits: CollectionLimits) -> dict:
@@ -51,14 +52,34 @@ async def run_tool_calls(toolbox: MCPToolbox, calls: list[ToolCall], step: Step,
     return list(await asyncio.gather(*(toolbox.call(tool, arguments, step) for tool, arguments in available)))
 
 
-async def collect_namespace_overview(toolbox: MCPToolbox, namespace: str, notes: list[str]) -> list[Evidence]:
-    """Broad, cheap first look: service health, pods, warning events and deployments."""
-    evidence = await run_tool_calls(toolbox, [
-        (McpTool.GET_SERVICE_OVERVIEW, {"namespace": namespace}),
-        (McpTool.LIST_PODS, {"namespace": namespace}),
-        (McpTool.LIST_EVENTS, {"namespace": namespace, "warnings_only": True}),
-        (McpTool.LIST_DEPLOYMENTS, {"namespace": namespace}),
-    ], Step.COLLECT_NAMESPACE_OVERVIEW, notes)
+async def read_service_knowledge(toolbox: MCPToolbox, template: McpResource, parameters: list[dict[str, str]],
+                                 step: Step, notes: list[str]) -> list[Evidence]:
+    """Read team knowledge (MCP resources) in parallel. Knowledge is optional: missing
+    items (no runbook for a service) are noted, not kept as evidence."""
+    if not toolbox.offers(template):
+        return []
+    read = await asyncio.gather(*(toolbox.read_resource(template, step, **p) for p in parameters))
+    for item in read:
+        if item.error:
+            notes.append(f"{step}: no {item.source} for {item.arguments['uri']}")
+    return [item for item in read if not item.error]
+
+
+async def collect_namespace_overview(toolbox: MCPToolbox, namespace: str, limits: CollectionLimits,
+                                     notes: list[str]) -> list[Evidence]:
+    """Broad, cheap first look: service health, pods, warning events and deployments, plus
+    the service map (who calls whom) when the team knowledge is used."""
+    tools_evidence, knowledge = await asyncio.gather(
+        run_tool_calls(toolbox, [
+            (McpTool.GET_SERVICE_OVERVIEW, {"namespace": namespace}),
+            (McpTool.LIST_PODS, {"namespace": namespace}),
+            (McpTool.LIST_EVENTS, {"namespace": namespace, "warnings_only": True}),
+            (McpTool.LIST_DEPLOYMENTS, {"namespace": namespace}),
+        ], Step.COLLECT_NAMESPACE_OVERVIEW, notes),
+        read_service_knowledge(toolbox, McpResource.TOPOLOGY, [{"namespace": namespace}] if limits.use_service_knowledge
+                               else [], Step.COLLECT_NAMESPACE_OVERVIEW, notes),
+    )
+    evidence = [*tools_evidence, *knowledge]
     pods = first_result(evidence, McpTool.LIST_PODS).get("pods", [])
     for item in evidence:
         if item.source == McpTool.LIST_EVENTS and isinstance(item.result, dict):
@@ -129,11 +150,23 @@ async def inspect_flagged_problems(
     ]
     if not calls:
         notes.append(f"{Step.INSPECT_FLAGGED_PROBLEMS}: nothing flagged by the overview; no targeted checks")
-    return await run_tool_calls(toolbox, calls, Step.INSPECT_FLAGGED_PROBLEMS, notes)
+    flagged = suspected_first(
+        [*(p.get("app") for p in unhealthy_pods(pods) if p.get("app")),
+         *failing_services(services, limits.error_rate_threshold),
+         *slow_services(services, limits.latency_threshold_ms),
+         *degraded_deployments(deployments)],
+        scope.suspected_services, limits.max_services)
+    tools_evidence, runbooks = await asyncio.gather(
+        run_tool_calls(toolbox, calls, Step.INSPECT_FLAGGED_PROBLEMS, notes),
+        read_service_knowledge(toolbox, McpResource.RUNBOOK, [{"service": s} for s in flagged]
+                               if limits.use_service_knowledge else [], Step.INSPECT_FLAGGED_PROBLEMS, notes),
+    )
+    return [*tools_evidence, *runbooks]
 
 
 async def trace_failing_dependencies(
-    toolbox: MCPToolbox, namespace: str, evidence: list[Evidence], window_minutes: int, notes: list[str]
+    toolbox: MCPToolbox, namespace: str, evidence: list[Evidence], window_minutes: int, limits: CollectionLimits,
+    notes: list[str],
 ) -> list[Evidence]:
     """One hop down the dependency chain: inspect the services that error logs blame."""
     deployments = first_result(evidence, McpTool.LIST_DEPLOYMENTS).get("deployments", [])
@@ -156,4 +189,11 @@ async def trace_failing_dependencies(
             if (service, metric) not in metrics_checked:
                 calls.append((McpTool.GET_METRICS, {"namespace": namespace, "service": service,
                                                     "metric": metric, "minutes": window_minutes}))
-    return await run_tool_calls(toolbox, calls, Step.TRACE_FAILING_DEPENDENCIES, notes)
+    runbooks_read = {e.arguments.get("uri") for e in evidence}
+    unread = [s for s in blamed if McpResource.RUNBOOK.format(service=s) not in runbooks_read]
+    tools_evidence, runbooks = await asyncio.gather(
+        run_tool_calls(toolbox, calls, Step.TRACE_FAILING_DEPENDENCIES, notes),
+        read_service_knowledge(toolbox, McpResource.RUNBOOK, [{"service": s} for s in unread]
+                               if limits.use_service_knowledge else [], Step.TRACE_FAILING_DEPENDENCIES, notes),
+    )
+    return [*tools_evidence, *runbooks]
