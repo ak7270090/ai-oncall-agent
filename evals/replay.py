@@ -28,6 +28,7 @@ from experiment_tracking import (  # noqa: E402
 from incident_cases import INCIDENT_CASES, IncidentCase  # noqa: E402
 
 from agent import Evidence, IncidentScope, create_model_router  # noqa: E402
+from agent.evidence.helpers import computed_findings  # noqa: E402
 from agent.investigation import reanalyze_evidence  # noqa: E402
 from config import get_settings  # noqa: E402
 from tracing import InvestigationTracer, TraceLabels, create_tracer  # noqa: E402
@@ -65,9 +66,12 @@ async def reanalyze(reasoning: ReasoningLoop, incident: IncidentCase, response: 
                     tracer: InvestigationTracer, tracker: ExperimentTracker, traceparent: str | None) -> dict:
     evidence = [Evidence(**{k: e.get(k) for k in ("step", "source", "arguments", "error", "result")})
                 for e in response["evidence"]]
+    settings = get_settings()
     result = await reanalyze_evidence(
         reasoning.models, incident.question, IncidentScope(**response["scope"]), response["namespace"],
         evidence, response["notes"], tracer, TraceLabels(tuple(tracker.trace_tags(incident)), traceparent),
+        computed_findings(evidence, settings.cpu_throttled_ratio_threshold, settings.cpu_min_usage_of_limit,
+                          settings.latency_threshold_ms),
     )
     return {"report": result.report.model_dump()}
 

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     default_namespace: str = "shop"
     error_rate_threshold: float = 0.05
     latency_threshold_ms: float = 1000
+    # A service counts as CPU-starved (stated to the LLM as a computed finding) when this
+    # share of its CPU periods is throttled at the container limit AND it really uses
+    # CPU: at least cpu_min_usage_of_limit of its limit (idle containers look throttled too).
+    cpu_throttled_ratio_threshold: float = 0.25
+    cpu_min_usage_of_limit: float = 0.15
     max_pods_to_inspect: int = 3
     max_services_to_inspect: int = 3
     log_lines: int = 50

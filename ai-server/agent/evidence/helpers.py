@@ -13,6 +13,7 @@ from constants import (
     PROBE_FAILURE_EVENT_REASON,
     RUNNING_POD_STATUS,
     McpTool,
+    Metric,
 )
 
 
@@ -97,3 +98,91 @@ def services_blamed_in_logs(evidence: list[Evidence], known_services: set[str]) 
             if any(hint in line.lower() for hint in FAILED_CALL_LOG_HINTS):
                 found |= _service_names_in(line, known_services) - own_service
     return found
+
+
+def cpu_quantity_in_cores(quantity: str | None) -> float | None:
+    """Kubernetes CPU quantity ("250m", "1", "0.5") in cores; None if missing or unreadable."""
+    try:
+        return float(quantity[:-1]) / 1000 if quantity and quantity.endswith("m") else float(quantity)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cpu_limits_by_service(evidence: list[Evidence]) -> dict[str, str]:
+    limits = {}
+    for item in evidence:
+        result = item.result if isinstance(item.result, dict) else {}
+        containers = result.get("containers") or []
+        if item.source == McpTool.GET_POD_STATUS and result.get("app") and containers:
+            limits[result["app"]] = containers[0].get("cpu_limit")
+    return limits
+
+
+def _latest_metric(evidence: list[Evidence], metric: Metric) -> dict[str, float]:
+    latest: dict[str, float] = {}
+    for item in evidence:
+        result = item.result if isinstance(item.result, dict) else {}
+        if (item.source == McpTool.GET_METRICS and item.arguments.get("metric") == metric
+                and result.get("latest") is not None):
+            service = item.arguments.get("service", "unknown")
+            latest[service] = max(result["latest"], latest.get(service, 0.0))
+    return latest
+
+
+def cpu_starved_services(evidence: list[Evidence], throttled_ratio_threshold: float,
+                         min_usage_of_limit: float) -> dict[str, float]:
+    """Services held at their CPU limit: latest cpu_throttled_ratio at or above the
+    threshold AND real CPU use of at least `min_usage_of_limit` of the limit. The ratio
+    only counts periods in which the container ran, so a mostly idle container with short
+    bursts can look heavily throttled without being CPU-starved."""
+    limits = _cpu_limits_by_service(evidence)
+    usage = _latest_metric(evidence, Metric.CPU_CORES)
+    starved = {}
+    for service, ratio in _latest_metric(evidence, Metric.CPU_THROTTLED_RATIO).items():
+        limit = cpu_quantity_in_cores(limits.get(service))
+        if ratio >= throttled_ratio_threshold and limit and usage.get(service, 0.0) >= min_usage_of_limit * limit:
+            starved[service] = ratio
+    return starved
+
+
+def latency_now_and_earlier(evidence: list[Evidence], latency_threshold_ms: float) -> tuple[dict[str, float], dict[str, tuple[float, float]]]:
+    """Services slow right now (latest p99 in the service overview) and services that were
+    slow earlier in the window but have recovered (history max above, latest below)."""
+    slow_now = {s["service"]: s["latency_p99_ms"]
+                for s in first_result(evidence, McpTool.GET_SERVICE_OVERVIEW).get("services", [])
+                if (s.get("latency_p99_ms") or 0) >= latency_threshold_ms}
+    recovered = {}
+    for item in evidence:
+        result = item.result if isinstance(item.result, dict) else {}
+        latest, peak = result.get("latest"), result.get("max")
+        service = item.arguments.get("service")
+        if (item.source == McpTool.GET_METRICS and item.arguments.get("metric") == Metric.LATENCY_P99_MS
+                and service not in slow_now and latest is not None and peak is not None
+                and peak >= latency_threshold_ms > latest):
+            recovered[service] = (peak, latest)
+    return slow_now, recovered
+
+
+def computed_findings(evidence: list[Evidence], cpu_throttled_ratio_threshold: float,
+                      cpu_min_usage_of_limit: float, latency_threshold_ms: float) -> list[str]:
+    """Conclusions code can draw from the evidence for certain, stated plainly for the LLM
+    so it doesn't have to infer them (it doesn't reliably at moderate signal levels, or when
+    an earlier incident is still in the metric history)."""
+    limits = _cpu_limits_by_service(evidence)
+    findings = [
+        f"{service} is held at its CPU limit ({limits.get(service) or 'limit unknown'}): throttled in "
+        f"{ratio:.0%} of CPU periods (latest). If {service} is the slow or failing service, the root cause "
+        f"is resource_exhaustion in {service}, not slow_dependency."
+        for service, ratio in sorted(
+            cpu_starved_services(evidence, cpu_throttled_ratio_threshold, cpu_min_usage_of_limit).items())
+    ]
+    slow_now, recovered = latency_now_and_earlier(evidence, latency_threshold_ms)
+    if slow_now:
+        findings.append("Slow right now (latest p99): " + ", ".join(
+            f"{service} {latency:.0f} ms" for service, latency in sorted(slow_now.items())) + ".")
+    findings += [
+        f"{service} was slow earlier in the window (p99 up to {peak:.0f} ms) but has recovered (latest "
+        f"{latest:.0f} ms): that was an earlier problem, not the cause of the current one."
+        for service, (peak, latest) in sorted(recovered.items())
+    ]
+    return findings

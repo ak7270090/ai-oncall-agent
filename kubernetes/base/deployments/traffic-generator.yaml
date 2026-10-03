@@ -1,5 +1,8 @@
-# Steady synthetic load so metrics have data: one order per second for a random
-# user; user 4 doesn't exist, so a small share of requests are expected 404s.
+# Steady synthetic load so metrics have data: TRAFFIC_WORKERS parallel loops, each
+# placing an order for a random user about once per second; user 4 doesn't exist, so a
+# small share of requests are expected 404s. Several workers keep load up while a
+# service is slow, like real users do (one loop waiting for each answer would ease off
+# exactly when a service struggles, and hide CPU saturation).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,14 +27,22 @@ spec:
         - name: traffic-generator
           image: curlimages/curl:8.10.1
           command: ["/bin/sh", "-c"]
+          env:
+            - name: TRAFFIC_WORKERS
+              value: "4"
           args:
             - |
-              while true; do
-                user=$(( $(od -An -N1 -tu1 /dev/urandom) % 4 + 1 ))
-                curl -s -o /dev/null -X POST http://order-service/orders \
-                  -H "content-type: application/json" -d "{\"user_id\": $user, \"amount\": 10}"
-                sleep 1
+              for worker in $(seq 1 "$TRAFFIC_WORKERS"); do
+                (
+                  while true; do
+                    user=$(( $(od -An -N1 -tu1 /dev/urandom) % 4 + 1 ))
+                    curl -s -o /dev/null -X POST http://order-service/orders \
+                      -H "content-type: application/json" -d "{\"user_id\": $user, \"amount\": 10}"
+                    sleep 1
+                  done
+                ) &
               done
+              wait
           resources:
             requests: {cpu: 10m, memory: 16Mi}
             limits: {cpu: 50m, memory: 32Mi}

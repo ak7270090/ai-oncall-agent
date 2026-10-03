@@ -24,6 +24,7 @@ Work out the most likely root cause:
   dependency it calls. Logs naming a failing upstream are strong evidence.
 - Distinguish symptoms from causes, and current problems from old or routine events
   (e.g. probe failures while pods were starting).
+- "Computed findings" are facts derived by code from the evidence; don't contradict them.
 - Explain what is happening NOW. Compare log and event timestamps with the current
   time, and a metric's `latest` value with its `max`: errors that stopped minutes ago
   belong to an earlier, resolved problem and are not the cause of the current one.
@@ -65,7 +66,12 @@ def scope_messages(question: str) -> list[BaseMessage]:
     return [SystemMessage(SCOPE_PROMPT), HumanMessage(question)]
 
 
-def root_cause_messages(question: str, scope: IncidentScope, namespace: str, evidence: list[Evidence]) -> list[BaseMessage]:
+def _findings_line(findings: list[str]) -> str:
+    return "Computed findings: " + (" ".join(findings) if findings else "none")
+
+
+def root_cause_messages(question: str, scope: IncidentScope, namespace: str, evidence: list[Evidence],
+                        findings: list[str]) -> list[BaseMessage]:
     return [
         SystemMessage(ROOT_CAUSE_PROMPT),
         HumanMessage("\n".join([
@@ -73,18 +79,21 @@ def root_cause_messages(question: str, scope: IncidentScope, namespace: str, evi
             f"Incident report: {question}",
             f"Understood scope: {scope.model_dump_json()}",
             f"Namespace: {namespace}",
+            _findings_line(findings),
             f"Evidence: {evidence_as_json(evidence)}",
         ])),
     ]
 
 
-def report_messages(question: str, evidence: list[Evidence], notes: list[str], analysis: str) -> list[BaseMessage]:
+def report_messages(question: str, evidence: list[Evidence], notes: list[str], analysis: str,
+                    findings: list[str]) -> list[BaseMessage]:
     return [
         SystemMessage(REPORT_PROMPT),
         HumanMessage("\n".join([
             f"Incident report: {question}",
             f"Evidence: {evidence_as_json(evidence)}",
             f"Investigation notes: {'; '.join(notes) or 'none'}",
+            _findings_line(findings),
             f"Analysis: {analysis or '(no analysis produced)'}",
         ])),
     ]

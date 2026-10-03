@@ -7,7 +7,11 @@ from agent import (
     build_investigation_graph,
     run_investigation,
 )
-from agent.evidence.helpers import services_blamed_in_logs, without_stale_pod_events
+from agent.evidence.helpers import (
+    computed_findings,
+    services_blamed_in_logs,
+    without_stale_pod_events,
+)
 from agent.investigation import reanalyze_evidence
 from config import Settings
 from constants import Step
@@ -173,3 +177,40 @@ def test_slow_call_log_lines_point_at_the_dependency():
         "WARNING: slow upstream call: POST http://payment-service/payments took 3.02s",
     ]})]
     assert services_blamed_in_logs(evidence, {"payment-service", "order-service"}) == {"payment-service"}
+
+
+def test_cpu_starved_service_is_stated_as_a_finding():
+    evidence = [
+        Evidence(source="get_metrics", step=Step.INSPECT_FLAGGED_PROBLEMS,
+                 arguments={"service": "user-service", "metric": "cpu_throttled_ratio"}, result={"latest": 0.34, "max": 0.48}),
+        Evidence(source="get_metrics", step=Step.INSPECT_FLAGGED_PROBLEMS,
+                 arguments={"service": "user-service", "metric": "cpu_cores"}, result={"latest": 0.09, "max": 0.09}),
+        # Throttled but nearly idle (short bursts only): not CPU-starved.
+        Evidence(source="get_metrics", step=Step.INSPECT_FLAGGED_PROBLEMS,
+                 arguments={"service": "payment-service", "metric": "cpu_throttled_ratio"}, result={"latest": 0.28, "max": 0.57}),
+        Evidence(source="get_metrics", step=Step.INSPECT_FLAGGED_PROBLEMS,
+                 arguments={"service": "payment-service", "metric": "cpu_cores"}, result={"latest": 0.004, "max": 0.004}),
+        Evidence(source="get_pod_status", step=Step.INSPECT_FLAGGED_PROBLEMS, arguments={"pod": "payment-service-a"},
+                 result={"app": "payment-service", "containers": [{"cpu_limit": "250m"}]}),
+        Evidence(source="get_pod_status", step=Step.INSPECT_FLAGGED_PROBLEMS, arguments={"pod": "user-service-a"},
+                 result={"app": "user-service", "containers": [{"cpu_limit": "250m"}]}),
+    ]
+    [finding] = computed_findings(evidence, cpu_throttled_ratio_threshold=0.25, cpu_min_usage_of_limit=0.15,
+                                  latency_threshold_ms=1000)
+    assert finding.startswith("user-service is held at its CPU limit (250m): throttled in 34%")
+    assert "resource_exhaustion" in finding
+    assert computed_findings(evidence, cpu_throttled_ratio_threshold=0.5, cpu_min_usage_of_limit=0.15,
+                             latency_threshold_ms=1000) == []
+
+
+def test_slow_now_and_recovered_services_are_stated_as_findings():
+    evidence = [
+        Evidence(source="get_service_overview", step=Step.COLLECT_NAMESPACE_OVERVIEW, arguments={}, result={"services": [
+            {"service": "payment-service", "latency_p99_ms": 4980.0}, {"service": "user-service", "latency_p99_ms": 49.5}]}),
+        Evidence(source="get_metrics", step=Step.TRACE_FAILING_DEPENDENCIES,
+                 arguments={"service": "user-service", "metric": "latency_p99_ms"}, result={"latest": 49.5, "max": 4980.0}),
+    ]
+    findings = computed_findings(evidence, cpu_throttled_ratio_threshold=0.25, cpu_min_usage_of_limit=0.15,
+                                 latency_threshold_ms=1000)
+    assert findings[0] == "Slow right now (latest p99): payment-service 4980 ms."
+    assert findings[1].startswith("user-service was slow earlier in the window (p99 up to 4980 ms) but has recovered")

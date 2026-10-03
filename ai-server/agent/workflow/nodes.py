@@ -8,6 +8,7 @@ from langgraph.prebuilt import ToolNode
 
 from agent.evidence import collection_steps
 from agent.evidence.collection_steps import CollectionLimits
+from agent.evidence.helpers import computed_findings
 from agent.evidence.mcp_toolbox import MCPToolbox, evidence_from_tool_messages
 from agent.llm.chat_model import invoke_llm
 from agent.llm.model_router import ModelRouter
@@ -74,7 +75,8 @@ class InvestigationNodes:
         may answer, or request more tool calls."""
         opening: list[BaseMessage] = []
         if not state["messages"]:
-            opening = root_cause_messages(state["question"], state["scope"], state["namespace"], state["evidence"])
+            opening = root_cause_messages(state["question"], state["scope"], state["namespace"], state["evidence"],
+                                          self._findings(state))
         response = await invoke_llm(self._root_cause_model, [*state["messages"], *opening])
         return {"messages": [*opening, response], "steps": [Step.FIND_ROOT_CAUSE], "llm_calls": 1}
 
@@ -97,11 +99,17 @@ class InvestigationNodes:
             "steps": [Step.RUN_REQUESTED_TOOLS],
         }
 
+    def _findings(self, state: InvestigationState) -> list[str]:
+        settings = self._settings
+        return computed_findings(state["evidence"], settings.cpu_throttled_ratio_threshold,
+                                 settings.cpu_min_usage_of_limit, settings.latency_threshold_ms)
+
     # --- LLM: write the report -----------------------------------------------------------
 
     async def write_report(self, state: InvestigationState) -> dict:
         """LLM call 3: a typed IncidentReport from the evidence and the analysis."""
         analysis = "\n\n".join(m.text for m in state["messages"] if isinstance(m, AIMessage) and m.text)
-        messages = report_messages(state["question"], state["evidence"], state["notes"], analysis)
+        messages = report_messages(state["question"], state["evidence"], state["notes"], analysis,
+                                   self._findings(state))
         report = await invoke_llm(self._report_model, messages)
         return {"report": report, "steps": [Step.WRITE_REPORT], "llm_calls": 1}
