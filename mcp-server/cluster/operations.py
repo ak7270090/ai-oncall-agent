@@ -69,7 +69,9 @@ class KubernetesOperations:
             raise ClusterError(f"Deployment '{name}' has no revision {revision}")
         template = self._api_client.sanitize_for_serialization(target.spec.template)
         template.get("metadata", {}).get("labels", {}).pop(POD_TEMPLATE_HASH_LABEL, None)
+        # A JSON Patch *replaces* the template. A strategic merge patch would merge lists such
+        # as `env` by name and keep settings the bad release added (found on the live cluster).
+        replace_template = [{"op": "replace", "path": "/spec/template", "value": template}]
         with translate_errors(f"roll back deployment '{name}'", namespace):
-            self._apps.patch_namespaced_deployment(name, namespace, {"spec": {"template": template}},
-                                                   _request_timeout=self._timeout)
+            self._apps.patch_namespaced_deployment(name, namespace, replace_template, _request_timeout=self._timeout)
         return f"Rolled back deployment {name} to the pod template of revision {revision}."
