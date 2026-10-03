@@ -20,6 +20,7 @@ NAMESPACE = "shop"
 CPU_LIMIT = "250m"
 # Env var names per deployment (values are never exposed).
 ENV_NAMES = {"payment-service": ["DB_HOST", "DB_PASSWORD", "FAULT_MODE"]}
+ENV_FROM = {"payment-service": ["configMap/payment-service-config", "secret/payment-service-secrets"]}
 
 
 def _utc_time(hour: int, minute: int, day: int = 27) -> datetime:

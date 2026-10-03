@@ -51,5 +51,6 @@ class FakeClusterBackend:
         return DeploymentSpec(
             namespace=namespace, name=name, replicas=deployment.desired_replicas, strategy="RollingUpdate",
             containers=[ContainerSpec(name=name, image=deployment.image, env_names=incident_data.ENV_NAMES.get(name, []),
+                                      env_from=incident_data.ENV_FROM.get(name, []),
                                       cpu_limit=incident_data.CPU_LIMIT)],
         )

@@ -39,6 +39,7 @@ async def test_deployment_spec_names_env_vars_but_never_their_values(client):
     spec = json.loads(await read(client, "k8s://shop/deployments/payment-service"))
     container = spec["containers"][0]
     assert container["env_names"] == ["DB_HOST", "DB_PASSWORD", "FAULT_MODE"]
+    assert container["env_from"] == ["configMap/payment-service-config", "secret/payment-service-secrets"]
     assert container["cpu_limit"] == "250m"
     assert "value" not in json.dumps(spec).lower()
 

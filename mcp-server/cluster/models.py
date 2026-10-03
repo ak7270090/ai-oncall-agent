@@ -106,6 +106,8 @@ class ContainerSpec(BaseModel):
     name: str
     image: str
     env_names: list[str] = []
+    # Whole ConfigMaps/Secrets loaded as env vars (envFrom), by name, e.g. "secret/payment-service-secrets".
+    env_from: list[str] = []
     cpu_request: str | None = None
     cpu_limit: str | None = None
     memory_request: str | None = None

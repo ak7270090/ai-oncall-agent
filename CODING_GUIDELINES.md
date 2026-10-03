@@ -346,3 +346,15 @@ message.
   input-required round trip: build it from data that can't change between rounds
   (`RecentLogs`), and fall back to the raw data when the client can't sample.
 - Sampling is capped per investigation and every sampled call is traced.
+
+## 22. Resources, annotations and the tool policy
+
+- Team knowledge (runbooks, service maps) lives in `mcp-server/knowledge/` and is
+  published as resources, not hard-coded into prompts. Keep runbooks factual: real
+  dependencies and the exact log messages the services write.
+- Resources are read-only and never expose secret values (env var names and
+  ConfigMap/Secret names only). Validate URI parameters like tool arguments.
+- Every tool is registered with annotations. The AI server only gives the agent tools
+  annotated read-only; a new tool without annotations is invisible to the agent.
+- Knowledge is optional evidence: a missing runbook is a note, and live evidence wins
+  over documentation.

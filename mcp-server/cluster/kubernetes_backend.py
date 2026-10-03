@@ -144,11 +144,20 @@ def _describe_probe(probe) -> str | None:
     return f"{target} every {probe.period_seconds or 10}s, fails after {probe.failure_threshold or 3}"
 
 
+def _describe_env_source(source) -> str:
+    if source.config_map_ref:
+        return f"configMap/{source.config_map_ref.name}"
+    if source.secret_ref:
+        return f"secret/{source.secret_ref.name}"
+    return "unknown"
+
+
 def _to_container_spec(container) -> ContainerSpec:
     return ContainerSpec(
         name=container.name,
         image=container.image,
         env_names=sorted({env.name for env in container.env or []}),
+        env_from=[_describe_env_source(source) for source in container.env_from or []],
         **_to_resource_fields(container),
         readiness_probe=_describe_probe(container.readiness_probe),
         liveness_probe=_describe_probe(container.liveness_probe),

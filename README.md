@@ -29,6 +29,8 @@ ai-oncall-agent/
 │   ├── observability/         real Prometheus: backend.py (interface), prometheus_backend.py, queries.py (PromQL)
 │   ├── fake/                  MCP_BACKEND=fake: incident_data.py, cluster_backend.py, metrics_backend.py
 │   ├── tools/                 tool layer: kubernetes.py, observability.py, helpers.py (namespace allowlist)
+│   ├── resources/             MCP resources: runbooks, service map, deployment specs; completions
+│   ├── knowledge/             team knowledge: runbooks/<service>.md, topology/<namespace>.json
 │   └── tests/                 unit + integration/ (live kind cluster, RBAC checks)
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
@@ -352,6 +354,52 @@ one full `make eval`.
 symptoms show up, and clear, within seconds rather than minutes. The eval waits
 20s after a symptom appears (like an alert's `for:`) before asking the agent.
 
+## Team knowledge as MCP resources (Phase 13)
+
+Tools return *live* data. An experienced engineer also knows things no metric shows:
+what depends on what, what a log message usually means, what is safe to do. The MCP
+server publishes that knowledge as **resources**: read-only documents with a URI, which
+the *client* reads (a tool, by contrast, is something the *model* decides to call).
+
+| Resource | Content | Source |
+| --- | --- | --- |
+| `runbook://{service}` | dependencies, what its log messages mean, known failure modes, safe actions (Markdown) | `mcp-server/knowledge/runbooks/<service>.md` |
+| `topology://{namespace}` | who calls whom (JSON) | `mcp-server/knowledge/topology/<namespace>.json` |
+| `k8s://{namespace}/deployments/{name}` | configured spec: image, env var *names*, envFrom ConfigMaps/Secrets by name, CPU/memory, probes; never values | live, Kubernetes API |
+
+```text
+→ resources/templates/list   ← runbook://{service}, topology://{namespace}, k8s://{namespace}/deployments/{name}
+→ resources/read runbook://payment-service
+← "# payment-service\n`POST /payments` ... database unavailable: payments-db:5432 ..."
+```
+
+The agent reads them during the fixed steps (`USE_SERVICE_KNOWLEDGE=true`, default):
+`collect_namespace_overview` reads the service map; `inspect_flagged_problems` reads the
+runbooks of the flagged services; `trace_failing_dependencies` those of services the logs
+blame. They become evidence (`source: runbook` / `topology`); the prompt says it's
+documented knowledge and that live evidence wins if they disagree. A service without a
+runbook becomes a note, not evidence. The namespace allowlist applies, names are
+validated, and the SDK itself rejects path traversal in URIs.
+
+Try it: MCP Inspector → Resources → `runbook://payment-service`.
+
+**Measured** (two eval runs each): 6/6 with and without knowledge, high confidence; about
++4% input tokens and the same cost per incident. No gain is visible yet because the agent
+already passes all six incidents.
+
+## Tool annotations and completions (Phase 16)
+
+- **Annotations:** every tool is registered with `readOnlyHint=true`,
+  `destructiveHint=false`, `idempotentHint=true` (`tools/helpers.py::READ_ONLY_TOOL`).
+  The AI server gives the agent **only** tools annotated read-only
+  (`mcp_client/tool_policy.py`); a tool without annotations counts as unsafe and is
+  logged and left out. `GET /tools` shows `read_only` / `destructive` per tool. Hints
+  are not security: RBAC still limits what the MCP server can do.
+- **Completions:** autocomplete for resource arguments in MCP clients:
+  `runbook://pay…` → `payment-service`, `payments-db`; `k8s://shop/deployments/…` lists
+  the deployments (`resources/completions.py`). MCP completions exist for resource-template
+  and prompt arguments, not for tool arguments.
+
 ## Log summaries and model routing (Phase 17)
 
 Long logs are expensive: every line goes into the strong model's prompt, twice (root
@@ -597,5 +645,7 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Tool errors | Schema violations and `ToolError` come back as `is_error=True`. The SDK hides the text of unexpected exceptions. |
 | Transport | Streamable HTTP at `/mcp`. stdio is available with `MCP_TRANSPORT=stdio`. |
 | Progress | `ctx.report_progress` in `get_service_overview`; the client opts in per call with `progress_callback` (`mcp_client/progress.py`). |
+| Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-server/resources/`); read by the client with `read_resource`. |
+| Annotations / completions | `readOnlyHint` on every tool, enforced by the client; completions for resource-template arguments. |
 | Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`agent/llm/sampling.py`). |
 | Host / client | The AI server is the host. `mcp.Client` is the client. |

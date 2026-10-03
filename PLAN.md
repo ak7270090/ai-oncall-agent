@@ -86,10 +86,10 @@ Sizes in the roadmap are rough: **S** about a day, **M** two to three days, **L*
 | 10 | Observability | Agent metrics | – | – | Done (Langfuse dashboards) |
 | 11 | Observability | Tracing of every investigation | – | – | Done |
 | 12 | Observability | Eval/replay runs as compared experiments | – | – | Done (no LLM-as-judge) |
-| 13 | Advanced MCP | Resources: runbooks, topology, live specs | M | – | Next |
+| 13 | Advanced MCP | Resources: runbooks, topology, live specs | M | – | Done |
 | 14 | Advanced MCP | Prompts: server-provided prompt templates | S | 13 | Not started |
 | 15 | Advanced MCP | Progress, logging, cancellation, live streaming | M | – | Done (MCP logging deprecated, not used) |
-| 16 | Advanced MCP | Completions and tool annotations | S | – | Not started |
+| 16 | Advanced MCP | Completions and tool annotations | S | – | Done |
 | 17 | Advanced MCP | Sampling + model routing: cheap model for log summaries | L | 15 | Done |
 | 18 | Write actions | Write tools + human approval through elicitation | L | 16 | Not started |
 | 19 | Security | MCP authentication (tokens, scopes) | M | 18 | Not started |
@@ -157,7 +157,15 @@ that carries its questions (SEP-2322). The client answers them through the callb
 registered and retries the call. The SDK's `Client` does the retry loop; our job is to
 pass the callbacks in `mcp_client/connection.py`.
 
-### Phase 13 — Resources
+### Phase 13 — Resources (done)
+
+Built as planned (README "Team knowledge as MCP resources"); the deployment spec also
+lists envFrom ConfigMaps/Secrets by name. Subscriptions were not built (no consumer
+yet). Measured (2026-10-04, two eval runs each vs. the two runs before): 6/6 and 6/6 with high
+confidence in both setups; +3 checks per incident (map + runbooks), about +4% strong-model
+input tokens, the same cost per incident (~$0.022). The eval can't show a gain because the
+agent already passes everything; the harder incidents of Phase 23 will.
+
 
 **Why (on-call problem):** the agent only knows what tools return right now. A human
 on-call engineer also uses *knowledge*: which service depends on which, what usually
@@ -301,7 +309,13 @@ appear on the traces.
 **Done when:** `curl -N /investigate/stream` shows each step live, and closing it stops
 the server-side work.
 
-### Phase 16 — Completions and tool annotations
+### Phase 16 — Completions and tool annotations (done)
+
+Built (README "Tool annotations and completions"). Correction to the plan below: MCP
+completions exist for resource-template and prompt arguments only, not for tool
+arguments, so they complete `runbook://{service}`, `topology://{namespace}` and
+`k8s://{namespace}/deployments/{name}`.
+
 
 **Why:** before adding tools that change things (Phase 18), every tool must say what
 kind of tool it is, and the client must enforce it.
