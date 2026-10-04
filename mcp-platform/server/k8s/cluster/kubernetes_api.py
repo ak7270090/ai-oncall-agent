@@ -1,6 +1,9 @@
+"""The real cluster: the Kubernetes API, read as `mcp-server` and changed as `mcp-operator`
+(two kubeconfigs from `make mcp-kubeconfig`)."""
+
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import cached_property
 from pathlib import Path
 
@@ -9,8 +12,13 @@ from kubernetes.client.rest import ApiException
 from kubernetes.config.config_exception import ConfigException
 from urllib3.exceptions import HTTPError as TransportError
 
-from k8s.backend import ClusterError, no_previous_container_error, not_found_error
-from k8s.constants import REVISION_ANNOTATION, WARNING_EVENT_TYPE
+from k8s.cluster.access import ClusterError, no_previous_container_error, not_found_error
+from k8s.constants import (
+    POD_TEMPLATE_HASH_LABEL,
+    RESTARTED_AT_ANNOTATION,
+    REVISION_ANNOTATION,
+    WARNING_EVENT_TYPE,
+)
 from k8s.models import (
     ClusterEvent,
     Condition,
@@ -179,7 +187,7 @@ def _newest_first_sort_key(value: datetime | None) -> float:
     return -value.timestamp() if value else 0.0
 
 
-class KubernetesBackend:
+class KubernetesReader:
     """Read-only access to the Kubernetes API with the credentials in `kubeconfig_path`."""
 
     def __init__(self, kubeconfig_path: str, request_timeout_seconds: float):
@@ -262,3 +270,55 @@ class KubernetesBackend:
             strategy=raw.spec.strategy.type if raw.spec.strategy else None,
             containers=[_to_container_spec(c) for c in raw.spec.template.spec.containers],
         )
+
+
+class KubernetesWriter:
+    """Approved changes, as the `mcp-operator` ServiceAccount."""
+
+    def __init__(self, kubeconfig_path: str, request_timeout_seconds: float):
+        self._kubeconfig_path = kubeconfig_path
+        self._timeout = request_timeout_seconds
+
+    @cached_property
+    def _api_client(self) -> client.ApiClient:
+        return load_api_client(self._kubeconfig_path)
+
+    @cached_property
+    def _apps(self) -> client.AppsV1Api:
+        return client.AppsV1Api(self._api_client)
+
+    def restart_deployment(self, namespace: str, name: str) -> str:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        patch = {"spec": {"template": {"metadata": {"annotations": {RESTARTED_AT_ANNOTATION: now}}}}}
+        with translate_errors(f"restart deployment '{name}'", namespace):
+            self._apps.patch_namespaced_deployment(name, namespace, patch, _request_timeout=self._timeout)
+        return f"Restarted deployment {name}: its pods are being replaced one by one."
+
+    def scale_deployment(self, namespace: str, name: str, replicas: int) -> str:
+        with translate_errors(f"scale deployment '{name}'", namespace):
+            self._apps.patch_namespaced_deployment_scale(
+                name, namespace, {"spec": {"replicas": replicas}}, _request_timeout=self._timeout)
+        return f"Scaled deployment {name} to {replicas} replicas."
+
+    def rollback_deployment(self, namespace: str, name: str, revision: int) -> str:
+        """What `kubectl rollout undo --to-revision` does: put the pod template of that
+        revision's ReplicaSet back into the Deployment."""
+        with translate_errors(f"roll back deployment '{name}'", namespace):
+            deployment = self._apps.read_namespaced_deployment(name, namespace, _request_timeout=self._timeout)
+            selector = ",".join(f"{k}={v}" for k, v in (deployment.spec.selector.match_labels or {}).items())
+            replica_sets = self._apps.list_namespaced_replica_set(
+                namespace, label_selector=selector, _request_timeout=self._timeout).items
+        owned = [rs for rs in replica_sets
+                 if any(o.uid == deployment.metadata.uid for o in rs.metadata.owner_references or [])]
+        target = next((rs for rs in owned
+                       if (rs.metadata.annotations or {}).get(REVISION_ANNOTATION) == str(revision)), None)
+        if target is None:
+            raise ClusterError(f"Deployment '{name}' has no revision {revision}")
+        template = self._api_client.sanitize_for_serialization(target.spec.template)
+        template.get("metadata", {}).get("labels", {}).pop(POD_TEMPLATE_HASH_LABEL, None)
+        # A JSON Patch *replaces* the template. A strategic merge patch would merge lists such
+        # as `env` by name and keep settings the bad release added (found on the live cluster).
+        replace_template = [{"op": "replace", "path": "/spec/template", "value": template}]
+        with translate_errors(f"roll back deployment '{name}'", namespace):
+            self._apps.patch_namespaced_deployment(name, namespace, replace_template, _request_timeout=self._timeout)
+        return f"Rolled back deployment {name} to the pod template of revision {revision}."

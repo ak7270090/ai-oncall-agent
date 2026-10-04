@@ -6,8 +6,8 @@ import time
 import pytest
 
 from config import Settings
-from prometheus.backend import MetricsError
-from prometheus.prometheus_backend import PrometheusBackend
+from prometheus.metrics.access import MetricsError
+from prometheus.metrics.prometheus_api import PrometheusReader
 
 SETTINGS = Settings(_env_file=None)
 NAMESPACE = SETTINGS.default_namespace
@@ -16,8 +16,8 @@ DATA_WAIT_SECONDS = 120
 POLL_SECONDS = 5
 
 
-def _backend() -> PrometheusBackend:
-    return PrometheusBackend(SETTINGS.prometheus_url, 3, SETTINGS.metrics_rate_window, SETTINGS.metrics_step_seconds)
+def _backend() -> PrometheusReader:
+    return PrometheusReader(SETTINGS.prometheus_url, 3, SETTINGS.metrics_rate_window, SETTINGS.metrics_step_seconds)
 
 
 def _prometheus_reachable() -> bool:

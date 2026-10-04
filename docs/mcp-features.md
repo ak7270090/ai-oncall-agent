@@ -45,7 +45,7 @@ already passes all six incidents.
   are not security: RBAC still limits what the MCP server can do.
 - **Completions:** autocomplete for resource arguments in MCP clients:
   `runbook://pay…` → `payment-service`, `payments-db`; `k8s://shop/deployments/…` lists
-  the deployments (`k8s/completions.py`). MCP completions exist for resource-template
+  the deployments (`k8s/knowledge.py`). MCP completions exist for resource-template
   and prompt arguments, not for tool arguments.
 
 ## Log summaries and model routing (Phase 17)
@@ -71,7 +71,7 @@ inspect_flagged_problems ─► tools/call get_pod_logs(pod, lines=200, summariz
 find_root_cause / write_report ─► the strong model reads the summary, not 200 lines
 ```
 
-- **MCP sampling** (`mcp-platform/server/k8s/log_summary.py`): the MCP server asks the
+- **MCP sampling** (`mcp-platform/server/k8s/pods.py`): the MCP server asks the
   *client's* LLM for the summary, so it holds no API key and picks no model. It only
   states preferences; with protocol 2026-07-28 the SDK sends them as an "input
   required" result and re-runs the tool with the answer. The question must be identical

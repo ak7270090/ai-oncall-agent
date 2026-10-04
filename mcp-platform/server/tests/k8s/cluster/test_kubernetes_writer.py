@@ -1,12 +1,12 @@
-"""KubernetesOperations against stubbed API classes (no cluster needed)."""
+"""KubernetesWriter against stubbed API classes (no cluster needed)."""
 
 from types import SimpleNamespace
 
 import pytest
 from kubernetes import client as k8s
 
-from k8s.backend import ClusterError
-from k8s.operations import KubernetesOperations
+from k8s.cluster.access import ClusterError
+from k8s.cluster.kubernetes_api import KubernetesWriter
 
 NAMESPACE = "shop"
 
@@ -26,7 +26,7 @@ def replica_set(revision: int, image: str, env: list[k8s.V1EnvVar]) -> k8s.V1Rep
     )
 
 
-def operations_with(patches: list) -> KubernetesOperations:
+def writer_with(patches: list) -> KubernetesWriter:
     deployment = k8s.V1Deployment(
         metadata=k8s.V1ObjectMeta(name="payment-service", uid="dep-uid"),
         spec=k8s.V1DeploymentSpec(selector=k8s.V1LabelSelector(match_labels={"app": "payment-service"}),
@@ -39,14 +39,14 @@ def operations_with(patches: list) -> KubernetesOperations:
         ]),
         patch_namespaced_deployment=lambda name, namespace, body, **kw: patches.append(body),
     )
-    operations = KubernetesOperations("unused", request_timeout_seconds=1)
+    operations = KubernetesWriter("unused", request_timeout_seconds=1)
     operations.__dict__.update(_apps=apps, _api_client=k8s.ApiClient())
     return operations
 
 
 def test_rollback_replaces_the_whole_template_so_settings_of_the_bad_release_go_away():
     patches = []
-    operations_with(patches).rollback_deployment(NAMESPACE, "payment-service", 1)
+    writer_with(patches).rollback_deployment(NAMESPACE, "payment-service", 1)
     [[operation]] = patches
     assert operation["op"] == "replace" and operation["path"] == "/spec/template"
     container = operation["value"]["spec"]["containers"][0]
@@ -57,5 +57,5 @@ def test_rollback_replaces_the_whole_template_so_settings_of_the_bad_release_go_
 def test_rollback_to_an_unknown_revision_changes_nothing():
     patches = []
     with pytest.raises(ClusterError, match="no revision 9"):
-        operations_with(patches).rollback_deployment(NAMESPACE, "payment-service", 9)
+        writer_with(patches).rollback_deployment(NAMESPACE, "payment-service", 9)
     assert patches == []

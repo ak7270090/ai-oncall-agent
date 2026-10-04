@@ -1,3 +1,6 @@
+"""How the Prometheus MCP server reads metrics: the MetricsReader interface; the real one
+is prometheus_api.py (PromQL in queries.py), the fake one fake.py (MCP_BACKEND=fake)."""
+
 from collections.abc import Callable
 from typing import Protocol
 
@@ -16,7 +19,7 @@ class MetricsError(ToolError):
 QueryDone = Callable[[Metric, float], None]
 
 
-class MetricsBackend(Protocol):
+class MetricsReader(Protocol):
     def metric_history(self, namespace: str, service: str, metric: Metric, minutes: int) -> list[MetricSample]: ...
 
     def service_overview(self, namespace: str, on_query_done: QueryDone | None = None) -> list[ServiceHealth]: ...

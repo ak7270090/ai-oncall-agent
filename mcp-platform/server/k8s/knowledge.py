@@ -1,9 +1,13 @@
-"""MCP resources: read-only documents addressed by URI, read by the client (the host
-decides when), unlike tools, which the model decides to call.
+"""The team's knowledge as MCP resources: read-only documents addressed by URI, read by
+the client (the host decides when), unlike tools, which the model decides to call.
 
 - runbook://{service}: the team's runbook for a service (knowledge/runbooks/*.md)
 - topology://{namespace}: which service calls which (knowledge/topology/*.json)
 - k8s://{namespace}/deployments/{name}: a deployment's configured spec, live
+
+Plus completions (autocomplete) for their arguments: a client typing runbook://pay...
+gets payment-service, payments-db. MCP completions cover prompt and resource-template
+arguments; tool arguments have none.
 """
 
 import json
@@ -13,10 +17,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from mcp.server.mcpserver.exceptions import ResourceError
+from mcp_types import (
+    Completion,
+    CompletionArgument,
+    CompletionContext,
+    PromptReference,
+    ResourceTemplateReference,
+)
 
 from config import Settings
 from constants import NAME_PATTERN
-from k8s.backend import ClusterBackend
+from k8s.cluster.access import ClusterError, ClusterReader
 from k8s.constants import DEPLOYMENT_SPEC_URI, RUNBOOK_URI, TOPOLOGY_URI
 
 
@@ -39,7 +50,7 @@ def runbook_services(settings: Settings) -> list[str]:
     return sorted(path.stem for path in (settings.knowledge_dir / "runbooks").glob("*.md"))
 
 
-def build_resources(backend: ClusterBackend, settings: Settings) -> list[ResourceDefinition]:
+def build_resources(reader: ClusterReader, settings: Settings) -> list[ResourceDefinition]:
     def require_allowed(namespace: str) -> None:
         if namespace not in settings.allowed_namespaces:
             raise ResourceError(f"Namespace '{namespace}' is not allowed. Allowed: {', '.join(settings.allowed_namespaces)}")
@@ -61,7 +72,7 @@ def build_resources(backend: ClusterBackend, settings: Settings) -> list[Resourc
     def read_deployment_spec(namespace: str, name: str) -> dict:
         require_allowed(namespace)
         _require_name(name, "deployment")
-        return backend.get_deployment_spec(namespace, name).model_dump(mode="json")
+        return reader.get_deployment_spec(namespace, name).model_dump(mode="json")
 
     return [
         ResourceDefinition(RUNBOOK_URI, "runbook", "The team's runbook for a service: dependencies, what its "
@@ -72,3 +83,31 @@ def build_resources(backend: ClusterBackend, settings: Settings) -> list[Resourc
                            "image, env var names (never values), CPU/memory requests and limits, probes.",
                            "application/json", read_deployment_spec),
     ]
+
+
+def build_completion_handler(reader: ClusterReader, settings: Settings):
+    def candidates(template: str, argument: str, context: dict[str, str]) -> list[str]:
+        if argument == "namespace" and template in (TOPOLOGY_URI, DEPLOYMENT_SPEC_URI):
+            return settings.allowed_namespaces
+        if argument == "service" and template == RUNBOOK_URI:
+            return runbook_services(settings)
+        if argument == "name" and template == DEPLOYMENT_SPEC_URI:
+            namespace = context.get("namespace", settings.default_namespace)
+            if namespace not in settings.allowed_namespaces:
+                return []
+            try:
+                return [d.name for d in reader.list_deployments(namespace)]
+            except ClusterError:
+                return []
+        return []
+
+    async def complete(ref: PromptReference | ResourceTemplateReference, argument: CompletionArgument,
+                       context: CompletionContext | None) -> Completion | None:
+        if not isinstance(ref, ResourceTemplateReference):
+            return None
+        known = (context.arguments if context and context.arguments else {})
+        matches = sorted(v for v in candidates(ref.uri, argument.name, known) if v.startswith(argument.value))
+        return Completion(values=matches[: settings.max_completion_values], total=len(matches),
+                          has_more=len(matches) > settings.max_completion_values)
+
+    return complete

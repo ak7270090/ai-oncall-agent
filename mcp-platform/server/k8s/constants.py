@@ -16,7 +16,7 @@ RESTARTED_AT_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
 # Label every ReplicaSet adds to its pod template; dropped when restoring an old template.
 POD_TEMPLATE_HASH_LABEL = "pod-template-hash"
 
-# Log summaries through MCP sampling (log_summary.py): what the summary request asks of
+# Log summaries through MCP sampling (pods.py): what the summary request asks of
 # the client's model (0-1; cheap and fast matter more than intelligence), and how many
 # raw lines are kept next to the summary.
 LOG_SUMMARY_TASK = "summarize_pod_logs"

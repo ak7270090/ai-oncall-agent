@@ -7,7 +7,6 @@ from pydantic import Field
 
 from config import Settings
 from constants import NAME_PATTERN
-from prometheus.backend import MetricsBackend, QueryDone
 from prometheus.constants import (
     DEFAULT_HISTORY_MINUTES,
     MAX_HISTORY_MINUTES,
@@ -16,11 +15,12 @@ from prometheus.constants import (
     Metric,
     MetricName,
 )
+from prometheus.metrics.access import MetricsReader, QueryDone
 from prometheus.models import MetricSeries, ServiceOverview
 from tool_definitions import READ_ONLY_TOOL, ToolDefinition, namespace_guard
 
 
-def build_prometheus_tools(backend: MetricsBackend, settings: Settings) -> list[ToolDefinition]:
+def build_prometheus_tools(reader: MetricsReader, settings: Settings) -> list[ToolDefinition]:
     Namespace, require_allowed = namespace_guard(settings)
     ServiceName = Annotated[str, Field(pattern=NAME_PATTERN, description="Service name, e.g. payment-service")]
 
@@ -31,7 +31,7 @@ def build_prometheus_tools(backend: MetricsBackend, settings: Settings) -> list[
         no pods at all (check list_deployments / list_pods)."""
         require_allowed(namespace)
         on_query_done = query_progress_reporter(ctx, len(SERVICE_OVERVIEW_METRICS))
-        services = await anyio.to_thread.run_sync(backend.service_overview, namespace, on_query_done)
+        services = await anyio.to_thread.run_sync(reader.service_overview, namespace, on_query_done)
         return ServiceOverview(namespace=namespace, window=settings.metrics_rate_window, services=services)
 
     def get_metrics(
@@ -54,7 +54,7 @@ def build_prometheus_tools(backend: MetricsBackend, settings: Settings) -> list[
             metric=metric,
             unit=METRIC_UNITS[metric],
             step_seconds=settings.metrics_step_seconds,
-            samples=backend.metric_history(namespace, service, metric, minutes),
+            samples=reader.metric_history(namespace, service, metric, minutes),
         )
 
     return [ToolDefinition(tool, READ_ONLY_TOOL) for tool in (get_service_overview, get_metrics)]
@@ -63,7 +63,7 @@ def build_prometheus_tools(backend: MetricsBackend, settings: Settings) -> list[
 def query_progress_reporter(ctx: Context, total_queries: int) -> QueryDone:
     """A QueryDone callback that sends MCP progress ("2 of 3: error_rate queried in 0.4s").
 
-    The backend runs in a worker thread (anyio.to_thread), so each report is handed back
+    The reader runs in a worker thread (anyio.to_thread), so each report is handed back
     to the event loop with anyio.from_thread. Without a progress token from the client,
     report_progress does nothing."""
     finished = count(1)

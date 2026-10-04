@@ -1,5 +1,8 @@
+"""The fake cluster (MCP_BACKEND=fake): serves the canned incident in fake_incident.py and
+records changes instead of making them. Same behavior contract as the real cluster."""
+
 import fake_incident
-from k8s.backend import no_previous_container_error, not_found_error
+from k8s.cluster.access import no_previous_container_error, not_found_error
 from k8s.constants import WARNING_EVENT_TYPE
 from k8s.models import (
     ClusterEvent,
@@ -12,8 +15,8 @@ from k8s.models import (
 )
 
 
-class FakeClusterBackend:
-    """Serves the canned incident in fake_incident.py; same behavior contract as KubernetesBackend."""
+class FakeClusterReader:
+    """Reads the canned incident in fake_incident.py."""
 
     def list_pods(self, namespace: str, app: str | None) -> list[PodDetail]:
         return [p for p in fake_incident.PODS if p.namespace == namespace and (app is None or p.app == app)]
@@ -54,3 +57,23 @@ class FakeClusterBackend:
                                       env_from=fake_incident.ENV_FROM.get(name, []),
                                       cpu_limit=fake_incident.CPU_LIMIT)],
         )
+
+
+class FakeClusterWriter:
+    """Records the changes it is asked to make instead of making them (tests, `make up`)."""
+
+    def __init__(self):
+        self.performed: list[str] = []
+
+    def restart_deployment(self, namespace: str, name: str) -> str:
+        return self._record(f"Restarted deployment {name}.")
+
+    def scale_deployment(self, namespace: str, name: str, replicas: int) -> str:
+        return self._record(f"Scaled deployment {name} to {replicas} replicas.")
+
+    def rollback_deployment(self, namespace: str, name: str, revision: int) -> str:
+        return self._record(f"Rolled back deployment {name} to the pod template of revision {revision}.")
+
+    def _record(self, done: str) -> str:
+        self.performed.append(done)
+        return done

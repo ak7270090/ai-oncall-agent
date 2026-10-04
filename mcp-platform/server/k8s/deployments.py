@@ -1,7 +1,7 @@
-"""Write tools (Phase 18): restart, scale or roll back a Deployment. Off unless
-MCP_ENABLE_WRITE_TOOLS=true.
+"""Deployment tools: list_deployments, get_deployment, and the changes restart_deployment,
+scale_deployment, rollback_deployment (only with MCP_ENABLE_WRITE_TOOLS=true).
 
-Every call asks a human first (MCP elicitation): "Roll back payment-service in shop to
+Every change asks a human first (MCP elicitation): "Roll back payment-service in shop to
 revision 4?" with an approve/reject answer and a reason. No approval, no change; the
 result says what was or wasn't done. Arguments are checked before anyone is asked: a
 replica count out of bounds or a revision that doesn't exist is refused right away.
@@ -26,11 +26,10 @@ from pydantic import BaseModel, Field
 
 from access.policy import AccessPolicy, get_caller
 from config import Settings
-from k8s.backend import ClusterBackend
+from k8s.cluster.access import ClusterReader, ClusterWriter
 from k8s.constants import Operation
-from k8s.models import OperationResult
-from k8s.operations import ClusterOperations
-from tool_definitions import ToolDefinition, change_tool, namespace_guard
+from k8s.models import DeploymentDetail, DeploymentList, OperationResult
+from tool_definitions import READ_ONLY_TOOL, ToolDefinition, change_tool, namespace_guard
 
 
 class Approval(BaseModel):
@@ -39,15 +38,32 @@ class Approval(BaseModel):
     approver: str = Field(min_length=1, description="Your user name (the AI server fills in the signed-in user)")
 
 
-def build_operation_tools(cluster: ClusterBackend, operations: ClusterOperations, settings: Settings,
-                          policy: AccessPolicy | None = None) -> list[ToolDefinition]:
-    """Write tools; with a `policy` (authentication on) approvers are checked too."""
+def build_deployment_tools(reader: ClusterReader, writer: ClusterWriter | None, settings: Settings,
+                           policy: AccessPolicy | None = None) -> list[ToolDefinition]:
+    """Read tools always; change tools when a `writer` is given. With a `policy`
+    (authentication on) approvers are checked too."""
     Namespace, require_allowed = namespace_guard(settings)
     Deployment = Annotated[str, Field(description="Deployment name, e.g. payment-service")]
 
+    def list_deployments(namespace: Namespace = settings.default_namespace) -> DeploymentList:
+        """List deployments with image, version label and desired/ready/updated/available replicas."""
+        require_allowed(namespace)
+        return DeploymentList(namespace=namespace, deployments=reader.list_deployments(namespace))
+
+    def get_deployment(name: str, namespace: Namespace = settings.default_namespace) -> DeploymentDetail:
+        """One deployment with its conditions and rollout history (ReplicaSet revisions,
+        newest first, each with image and ready replicas). Use it to spot a bad rollout:
+        the newest revision failing while an older one worked."""
+        require_allowed(namespace)
+        return reader.get_deployment(namespace, name)
+
+    read_tools = [ToolDefinition(list_deployments, READ_ONLY_TOOL), ToolDefinition(get_deployment, READ_ONLY_TOOL)]
+    if writer is None:
+        return read_tools
+
     def require_deployment(namespace: str, name: str):
         require_allowed(namespace)
-        return cluster.get_deployment(namespace, name)  # raises a readable error if missing
+        return reader.get_deployment(namespace, name)  # raises a readable error if missing
 
     def ask_restart(name: str, namespace: str) -> Elicit[Approval]:
         require_deployment(namespace, name)
@@ -89,7 +105,7 @@ def build_operation_tools(cluster: ClusterBackend, operations: ClusterOperations
     ) -> OperationResult:
         """Restart all pods of a deployment (rolling). Asks a human for approval first."""
         return perform(Operation.RESTART_DEPLOYMENT, namespace, name, approval,
-                       lambda: operations.restart_deployment(namespace, name))
+                       lambda: writer.restart_deployment(namespace, name))
 
     def scale_deployment(
         name: Deployment,
@@ -100,7 +116,7 @@ def build_operation_tools(cluster: ClusterBackend, operations: ClusterOperations
         """Set a deployment's number of pods, e.g. scale back up a service someone scaled to
         0. Asks a human for approval first."""
         return perform(Operation.SCALE_DEPLOYMENT, namespace, name, approval,
-                       lambda: operations.scale_deployment(namespace, name, replicas))
+                       lambda: writer.scale_deployment(namespace, name, replicas))
 
     def rollback_deployment(
         name: Deployment,
@@ -111,9 +127,9 @@ def build_operation_tools(cluster: ClusterBackend, operations: ClusterOperations
         """Roll a deployment back to an earlier revision (its image and configuration), e.g.
         after a bad release. Asks a human for approval first."""
         return perform(Operation.ROLLBACK_DEPLOYMENT, namespace, name, approval,
-                       lambda: operations.rollback_deployment(namespace, name, revision))
+                       lambda: writer.rollback_deployment(namespace, name, revision))
 
-    return [
+    return read_tools + [
         ToolDefinition(restart_deployment, change_tool(idempotent=False)),
         ToolDefinition(scale_deployment, change_tool(idempotent=True)),
         ToolDefinition(rollback_deployment, change_tool(idempotent=False)),

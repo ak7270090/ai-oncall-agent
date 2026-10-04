@@ -1,4 +1,4 @@
-"""KubernetesBackend mapping and error translation, using real client model objects
+"""KubernetesReader mapping and error translation, using real client model objects
 and stubbed API classes (no cluster needed)."""
 
 from datetime import datetime, timezone
@@ -9,8 +9,8 @@ from kubernetes import client as k8s
 from kubernetes.client.rest import ApiException
 from urllib3.exceptions import MaxRetryError
 
-from k8s.backend import ClusterError
-from k8s.kubernetes_backend import KubernetesBackend
+from k8s.cluster.access import ClusterError
+from k8s.cluster.kubernetes_api import KubernetesReader
 
 NAMESPACE = "shop"
 CREATED = datetime(2026, 9, 27, 10, 0, tzinfo=timezone.utc)
@@ -66,15 +66,15 @@ def deployment() -> k8s.V1Deployment:
     )
 
 
-def backend_with(core=None, apps=None) -> KubernetesBackend:
-    backend = KubernetesBackend("unused", request_timeout_seconds=1)
+def reader_with(core=None, apps=None) -> KubernetesReader:
+    backend = KubernetesReader("unused", request_timeout_seconds=1)
     backend.__dict__.update(_core=core, _apps=apps)
     return backend
 
 
 def test_pod_mapping_extracts_crash_details():
     core = SimpleNamespace(list_namespaced_pod=lambda *a, **kw: k8s.V1PodList(items=[crashing_pod()]))
-    [pod] = backend_with(core=core).list_pods(NAMESPACE, app=None)
+    [pod] = reader_with(core=core).list_pods(NAMESPACE, app=None)
     container = pod.containers[0]
     assert (pod.app, pod.version, pod.phase) == ("payment-service", "v2", "Running")
     assert (container.state, container.reason, container.restart_count) == ("waiting", "CrashLoopBackOff", 7)
@@ -87,7 +87,7 @@ def test_app_filter_becomes_label_selector():
     def list_pods(namespace, **kwargs):
         seen.update(kwargs)
         return k8s.V1PodList(items=[])
-    backend_with(core=SimpleNamespace(list_namespaced_pod=list_pods)).list_pods(NAMESPACE, app="payment-service")
+    reader_with(core=SimpleNamespace(list_namespaced_pod=list_pods)).list_pods(NAMESPACE, app="payment-service")
     assert seen["label_selector"] == "app=payment-service"
 
 
@@ -101,7 +101,7 @@ def test_deployment_revisions_only_owned_and_newest_first():
         read_namespaced_deployment=lambda *a, **kw: deployment(),
         list_namespaced_replica_set=lambda *a, **kw: k8s.V1ReplicaSetList(items=replica_sets),
     )
-    detail = backend_with(apps=apps).get_deployment(NAMESPACE, "payment-service")
+    detail = reader_with(apps=apps).get_deployment(NAMESPACE, "payment-service")
     assert [r.revision for r in detail.revisions] == [2, 1]
     assert detail.revisions[1].image == "payment-service:v1"
 
@@ -113,7 +113,7 @@ def test_logs_are_decoded_into_timestamped_lines():
         seen.update(kwargs)
         return SimpleNamespace(data="2026-09-28T16:27:02Z first\n2026-09-28T16:27:03Z second\n".encode())
 
-    lines = backend_with(core=SimpleNamespace(read_namespaced_pod_log=read_log)).get_pod_logs(NAMESPACE, "p", 10, previous=True)
+    lines = reader_with(core=SimpleNamespace(read_namespaced_pod_log=read_log)).get_pod_logs(NAMESPACE, "p", 10, previous=True)
     assert lines == ["2026-09-28T16:27:02Z first", "2026-09-28T16:27:03Z second"]
     assert seen["timestamps"] is True
 
@@ -123,18 +123,18 @@ def test_api_errors_become_readable_tool_errors(status, expected):
     def fail(*args, **kwargs):
         raise ApiException(status=status, reason="x")
     with pytest.raises(ClusterError, match=expected):
-        backend_with(core=SimpleNamespace(read_namespaced_pod=fail)).get_pod(NAMESPACE, "p")
+        reader_with(core=SimpleNamespace(read_namespaced_pod=fail)).get_pod(NAMESPACE, "p")
 
 
 def test_unreachable_cluster_is_reported():
     def fail(*args, **kwargs):
         raise MaxRetryError(pool=None, url="https://127.0.0.1:6443")
     with pytest.raises(ClusterError, match="unreachable"):
-        backend_with(core=SimpleNamespace(list_namespaced_pod=fail)).list_pods(NAMESPACE, None)
+        reader_with(core=SimpleNamespace(list_namespaced_pod=fail)).list_pods(NAMESPACE, None)
 
 
 def test_missing_kubeconfig_explains_how_to_fix(tmp_path):
-    backend = KubernetesBackend(str(tmp_path / "missing"), request_timeout_seconds=1)
+    backend = KubernetesReader(str(tmp_path / "missing"), request_timeout_seconds=1)
     with pytest.raises(ClusterError, match="make mcp-kubeconfig"):
         backend.list_pods(NAMESPACE, None)
 
@@ -143,4 +143,4 @@ def test_missing_previous_container_tells_model_what_to_do_instead():
     def fail(*args, **kwargs):
         raise ApiException(status=400, reason="previous terminated container not found")
     with pytest.raises(ClusterError, match="previous=false"):
-        backend_with(core=SimpleNamespace(read_namespaced_pod_log=fail)).get_pod_logs(NAMESPACE, "p", 10, previous=True)
+        reader_with(core=SimpleNamespace(read_namespaced_pod_log=fail)).get_pod_logs(NAMESPACE, "p", 10, previous=True)

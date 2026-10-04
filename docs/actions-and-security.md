@@ -18,7 +18,7 @@ POST /actions/53c3…/approval {"approve": true, "reason": "v2 breaks payments"}
 GET  /actions/53c3…  → {"status": "done", "result": {"detail": "Rolled back deployment ..."}}
 ```
 
-- **Write tools** (`mcp-platform/server/k8s/write_tools.py`, off unless `MCP_ENABLE_WRITE_TOOLS=true`):
+- **Write tools** (`mcp-platform/server/k8s/deployments.py`, off unless `MCP_ENABLE_WRITE_TOOLS=true`):
   `restart_deployment`, `scale_deployment` (0–`MCP_MAX_REPLICAS`), `rollback_deployment`,
   annotated `destructiveHint=true`, so the investigating agent never gets them (Phase 16).
 - **Approval = MCP elicitation:** each tool first checks its arguments (deployment exists,

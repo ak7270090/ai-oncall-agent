@@ -1,15 +1,15 @@
 from datetime import timedelta
 
 import fake_incident
-from prometheus.backend import QueryDone
 from prometheus.constants import SERVICE_OVERVIEW_METRICS, Metric
+from prometheus.metrics.access import QueryDone
 from prometheus.models import MetricSample, ServiceHealth
 
 SAMPLE_STEP = timedelta(minutes=1)
 
 
-class FakeMetricsBackend:
-    """Serves the canned incident's metrics; same behavior contract as PrometheusBackend."""
+class FakeMetricsReader:
+    """Serves the canned incident's metrics; same behavior contract as PrometheusReader."""
 
     def metric_history(self, namespace: str, service: str, metric: Metric, minutes: int) -> list[MetricSample]:
         if namespace != fake_incident.NAMESPACE:

@@ -48,7 +48,7 @@ User ──► ai-server (FastAPI + LangGraph + LLM + MCP client)   evals/ (make
 | 11 | Tracing of every investigation | `ai-server/tracing/`, docs/observability.md "Tracing with Langfuse" |
 | 12 | Eval and replay runs as Langfuse experiments, scored per incident | `evals/experiment_tracking.py`, docs/evals.md "Comparing runs in Langfuse" |
 | 15 | Live progress over Server-Sent Events, MCP progress, cancellation | `ai-server/investigation/events.py`, `POST /investigate/stream` |
-| 17 | MCP sampling for log summaries, model routing (strong / fast tier) | `mcp-platform/server/k8s/log_summary.py`, `ai-server/llm/model_router.py` |
+| 17 | MCP sampling for log summaries, model routing (strong / fast tier) | `mcp-platform/server/k8s/pods.py`, `ai-server/llm/model_router.py` |
 | – | Computed findings (CPU-starved, slow now vs. recovered), parallel traffic | `investigation/evidence/analysis.py::computed_findings` |
 
 ## How every phase is done

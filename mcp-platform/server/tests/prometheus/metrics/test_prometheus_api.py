@@ -1,16 +1,16 @@
 import httpx2
 import pytest
 
-from prometheus.backend import MetricsError
-from prometheus.prometheus_backend import PrometheusBackend
-from prometheus.queries import build_query
+from prometheus.metrics.access import MetricsError
+from prometheus.metrics.prometheus_api import PrometheusReader
+from prometheus.metrics.queries import build_query
 
 BASE_URL = "http://prometheus.test"
 
 
-def backend_answering(handler) -> PrometheusBackend:
+def reader_answering(handler) -> PrometheusReader:
     http_client = httpx2.Client(base_url=BASE_URL, transport=httpx2.MockTransport(handler))
-    return PrometheusBackend(BASE_URL, timeout_seconds=1, rate_window="1m", step_seconds=60, http_client=http_client)
+    return PrometheusReader(BASE_URL, timeout_seconds=1, rate_window="1m", step_seconds=60, http_client=http_client)
 
 
 def success(result: list[dict]) -> httpx2.Response:
@@ -24,7 +24,7 @@ def test_history_parses_samples_and_nan_as_none():
         seen.update(path=request.url.path, query=request.url.params["query"], step=request.url.params["step"])
         return success([{"metric": {}, "values": [[1700000000, "0.25"], [1700000060, "NaN"]]}])
 
-    samples = backend_answering(handler).metric_history("shop", "payment-service", "error_rate", minutes=5)
+    samples = reader_answering(handler).metric_history("shop", "payment-service", "error_rate", minutes=5)
     assert [s.value for s in samples] == [0.25, None]
     assert seen["path"] == "/api/v1/query_range"
     assert seen["step"] == "60"
@@ -32,7 +32,7 @@ def test_history_parses_samples_and_nan_as_none():
 
 
 def test_no_series_means_no_samples():
-    assert backend_answering(lambda r: success([])).metric_history("shop", "x", "request_rate", 5) == []
+    assert reader_answering(lambda r: success([])).metric_history("shop", "x", "request_rate", 5) == []
 
 
 def test_overview_merges_metrics_per_service_and_defaults_missing_errors_to_zero():
@@ -47,7 +47,7 @@ def test_overview_merges_metrics_per_service_and_defaults_missing_errors_to_zero
             {"metric": {"service": "user-service"}, "value": [0, "3"]},
         ])
 
-    overview = {s.service: s for s in backend_answering(handler).service_overview("shop")}
+    overview = {s.service: s for s in reader_answering(handler).service_overview("shop")}
     assert (overview["order-service"].error_rate, overview["order-service"].latency_p99_ms) == (0.1, 120.5)
     assert overview["user-service"].error_rate == 0.0
 
@@ -56,14 +56,14 @@ def test_query_error_is_reported():
     def handler(request):
         return httpx2.Response(400, json={"status": "error", "error": "parse error"})
     with pytest.raises(MetricsError, match="parse error"):
-        backend_answering(handler).service_overview("shop")
+        reader_answering(handler).service_overview("shop")
 
 
 def test_unreachable_prometheus_is_reported():
     def handler(request):
         raise httpx2.ConnectError("refused", request=request)
     with pytest.raises(MetricsError, match="unreachable"):
-        backend_answering(handler).metric_history("shop", "x", "cpu_cores", 5)
+        reader_answering(handler).metric_history("shop", "x", "cpu_cores", 5)
 
 
 @pytest.mark.parametrize(("metric", "expected_fragment"), [
@@ -85,5 +85,5 @@ def test_grouped_latency_keeps_service_and_le():
 
 def test_service_overview_reports_each_query():
     finished = []
-    backend_answering(lambda r: success([])).service_overview("shop", lambda metric, seconds: finished.append(metric))
+    reader_answering(lambda r: success([])).service_overview("shop", lambda metric, seconds: finished.append(metric))
     assert finished == ["request_rate", "error_rate", "latency_p99_ms"]

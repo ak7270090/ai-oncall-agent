@@ -5,7 +5,7 @@ from mcp_types import CreateMessageResult, TextContent
 from access.audit_log import AuditLog
 from config import Settings
 from k8s.constants import LOG_LINES_KEPT_WITH_SUMMARY, LOG_SUMMARY_TASK
-from k8s.log_summary import RecentLogs
+from k8s.pods import RecentLogs
 from k8s.server import build_k8s_server
 
 pytestmark = pytest.mark.anyio

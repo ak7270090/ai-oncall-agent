@@ -1,3 +1,7 @@
+"""How the Kubernetes MCP server reaches the cluster: a reader (the read-only `mcp-server`
+ServiceAccount, used by every tool) and a writer (the `mcp-operator` ServiceAccount, used
+only by approved changes), so an investigation can't change anything even by mistake."""
+
 from typing import Protocol
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -15,7 +19,7 @@ class ClusterError(ToolError):
     """An anticipated cluster failure; its message is shown to the model."""
 
 
-# Shared by every backend so the model sees the same message whichever one runs.
+# Shared by the real and the fake cluster so the model sees the same message either way.
 def not_found_error(action: str, namespace: str) -> ClusterError:
     return ClusterError(f"Not found: {action} in namespace '{namespace}'")
 
@@ -27,7 +31,7 @@ def no_previous_container_error(pod: str) -> ClusterError:
     )
 
 
-class ClusterBackend(Protocol):
+class ClusterReader(Protocol):
     def list_pods(self, namespace: str, app: str | None) -> list[PodDetail]: ...
 
     def get_pod(self, namespace: str, name: str) -> PodDetail: ...
@@ -41,3 +45,13 @@ class ClusterBackend(Protocol):
     def list_events(self, namespace: str, warnings_only: bool, limit: int) -> list[ClusterEvent]: ...
 
     def get_deployment_spec(self, namespace: str, name: str) -> DeploymentSpec: ...
+
+
+class ClusterWriter(Protocol):
+    """Each method performs the change and returns what was done, in one sentence."""
+
+    def restart_deployment(self, namespace: str, name: str) -> str: ...
+
+    def scale_deployment(self, namespace: str, name: str, replicas: int) -> str: ...
+
+    def rollback_deployment(self, namespace: str, name: str, revision: int) -> str: ...

@@ -60,7 +60,7 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Tool errors | Schema violations and `ToolError` come back as `is_error=True`. The SDK hides the text of unexpected exceptions. |
 | Transport | Streamable HTTP at `/mcp`. stdio is available with `MCP_TRANSPORT=stdio`. |
 | Progress | `ctx.report_progress` in `get_service_overview`; the client opts in per call with `progress_callback` (`mcp_client/progress.py`). |
-| Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-platform/server/k8s/resources.py`); read by the client with `read_resource`. |
+| Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-platform/server/k8s/knowledge.py`); read by the client with `read_resource`. |
 | Annotations / completions | `readOnlyHint` on every tool, enforced by the client; completions for resource-template arguments. |
 | Elicitation | Write tools ask for approval with `Resolve`/`Elicit`; the AI server answers via `Client(elicitation_callback=…)` from `POST /actions/{id}/approval`. |
 | Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`llm/sampling.py`). |

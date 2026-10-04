@@ -65,7 +65,7 @@ fields shown above, never environment variables or other parts of a pod spec.
 | Layer | Enforces |
 | --- | --- |
 | **RBAC** (`mcp-platform/server/deploy/mcp-server.yaml`) | The `mcp-server` ServiceAccount can only `get/list` pods, pods/log, events, deployments and ReplicaSets in `shop`: no Secrets, no other namespaces, no writes. Enforced by the API server even if our code has a bug. |
-| **Tool layer** (`mcp-platform/server/k8s/tools.py`) | Namespace allowlist (`MCP_ALLOWED_NAMESPACES`), validated arguments (log lines ≤ 500), trimmed output, readable errors for the model |
+| **Tool layer** (`mcp-platform/server/k8s/pods.py`, `deployments.py`, `events.py`) | Namespace allowlist (`MCP_ALLOWED_NAMESPACES`), validated arguments (log lines ≤ 500), trimmed output, readable errors for the model |
 
 The MCP server never uses your admin kubeconfig. `make cluster-up` runs
 `make mcp-kubeconfig`, which creates a **short-lived token** (default 24h, set
@@ -109,7 +109,7 @@ traffic-generator ──4 workers × ~1 order/s──► order-service ──►
 | `get_service_overview(namespace)` | Current request rate, error rate and p99 latency for every service, to find the failing one |
 | `get_metrics(service, metric, minutes)` | History of one metric (one sample per minute), to see *when* it changed |
 
-**The PromQL behind each metric** (`mcp-platform/server/prometheus/queries.py`,
+**The PromQL behind each metric** (`mcp-platform/server/prometheus/metrics/queries.py`,
 with `sel` = `namespace="shop",service="…"`):
 
 | Metric | PromQL | Function learned |

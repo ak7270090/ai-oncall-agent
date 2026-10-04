@@ -24,7 +24,7 @@ message.
   `enum` rather than a `$ref`. Messages that embed variables stay as f-strings where
   they're raised.
 - A message that more than one implementation produces (real and fake backend) is
-  built in one shared function next to the error type (`k8s/backend.py::
+  built in one shared function next to the error type (`k8s/cluster/access.py::
   not_found_error`), so the implementations can't drift apart.
 - Values that define an API contract (such as a tool's maximum `lines`) are named
   module-level constants (`MAX_LOG_LINES`). Never leave an unexplained literal
@@ -88,8 +88,7 @@ message.
   `investigation/evidence/`).
 - `__init__.py` only describes the package (a docstring). Import from the module that
   defines a name (`from investigation.models import IncidentReport`), so every import
-  says where the code is. Exception: mcp-server's `k8s/` and `prometheus/` export their
-  backend factories (`create_backend`).
+  says where the code is.
 - Constants live with their domain (`investigation/constants.py`); the app's top-level
   `constants.py` keeps only values used across domains (trace names, health statuses).
 - Build objects in factory functions (`create_app`, `build_k8s_server`,
@@ -117,7 +116,7 @@ message.
   - `extract_…` / `parse_…` pulls data out of something (`extract_result_text`, `parse_tool_output`)
   - `get_…` / `list_…` / `query_…` reads from a source (`get_pod`, `query_prometheus`)
   - `create_…` makes an object that holds a resource, a client or an app
-    (`create_app`, `create_backend`, `create_chat_model`); `build_…`
+    (`create_app`, `create_reader`, `create_chat_model`); `build_…`
     assembles a value from parts without side effects (`build_query`,
     `build_investigation_graph`, `build_mcp_connector`)
   - FastAPI dependencies: `get_…` functions, used through `…Dep` aliases
@@ -133,8 +132,8 @@ message.
   (Prometheus config), not `prometheus.yaml` and `prometheus.yml`. Kubernetes manifests
   are named after what they contain.
 - Keep fake implementations out of the real ones' files: each `MCP_BACKEND=fake` backend
-  sits in its own module next to the real one it replaces (`k8s/fake_backend.py`,
-  `prometheus/fake_backend.py`), and the canned incident both serve is
+  sits in its own module next to the real one it replaces (`k8s/cluster/fake.py`,
+  `prometheus/metrics/fake.py`), and the canned incident both serve is
   `fake_incident.py`. Test-only fakes stay in `tests/` (`tests/fakes.py`).
 - Small pure functions go in a module named after what they do
   (`investigation/evidence/analysis.py`: the rules that read evidence). `helpers.py`
@@ -147,10 +146,10 @@ message.
   does without opening it.
 - Avoid functions defined inside functions. Prefer a class whose methods share
   dependencies (`InvestigationNodes`). Exceptions: MCP tool factories
-  (`build_kubernetes_tools`) use closures because each tool's JSON Schema
+  (`build_pod_tools`) use closures because each tool's JSON Schema
   (defaults, allowed namespaces) is built from settings at startup; small handler
   factories (`mcp_client/progress.py::progress_callback_for`,
-  `prometheus/helpers.py::query_progress_reporter`) return a configured callback.
+  `prometheus/tools.py::query_progress_reporter`) return a configured callback.
 - Keep state shapes in their own module (`investigation/workflow/state.py`), next to a constructor for
   the initial state.
 
@@ -257,9 +256,15 @@ message.
 - Tools return typed pydantic models (they become the MCP output schema)
   containing only the fields an on-call engineer needs. Never return raw API
   objects, environment variables or anything from a Secret.
-- Keep fake and real backends behind the same interface (`ClusterBackend`,
-  `MetricsBackend`) so every tool is testable without a cluster. Never mix
-  synthetic data with a real backend.
+- Keep the fake and the real system behind the same interface (`ClusterReader`,
+  `ClusterWriter`, `MetricsReader`) so every tool is testable without a cluster. Never
+  mix synthetic data with a real system.
+- Inside an MCP server, tools are grouped by the object they act on (`k8s/pods.py`,
+  `deployments.py`, `events.py`), reading and changing it in the same module, never by
+  the phase that added them. Access to an external system lives in its own folder with
+  the same three names: `access.py` (interfaces, errors), `<system>_api.py` (the real
+  one), `fake.py` (`k8s/cluster/`, `prometheus/metrics/`). Name access objects after
+  what they may do (`ClusterReader`, `ClusterWriter`), not "backend".
 - Validate every value that gets put into a query language (PromQL, label
   selectors) against a strict pattern (`constants.py::NAME_PATTERN`). Never
   build a query from free text.

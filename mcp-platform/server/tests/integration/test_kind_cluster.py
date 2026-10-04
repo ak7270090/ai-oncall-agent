@@ -7,8 +7,8 @@ from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
 from config import Settings
-from k8s.backend import ClusterError
-from k8s.kubernetes_backend import KubernetesBackend
+from k8s.cluster.access import ClusterError
+from k8s.cluster.kubernetes_api import KubernetesReader
 
 SETTINGS = Settings(_env_file=None)
 NAMESPACE = SETTINGS.default_namespace
@@ -19,7 +19,7 @@ def _cluster_reachable() -> bool:
     if not Path(SETTINGS.kubeconfig_path).is_file():
         return False
     try:
-        KubernetesBackend(SETTINGS.kubeconfig_path, request_timeout_seconds=3).list_deployments(NAMESPACE)
+        KubernetesReader(SETTINGS.kubeconfig_path, request_timeout_seconds=3).list_deployments(NAMESPACE)
     except ClusterError:
         return False
     return True
@@ -29,8 +29,8 @@ pytestmark = pytest.mark.skipif(not _cluster_reachable(), reason="kind cluster n
 
 
 @pytest.fixture(scope="module")
-def backend() -> KubernetesBackend:
-    return KubernetesBackend(SETTINGS.kubeconfig_path, SETTINGS.kube_request_timeout_seconds)
+def backend() -> KubernetesReader:
+    return KubernetesReader(SETTINGS.kubeconfig_path, SETTINGS.kube_request_timeout_seconds)
 
 
 @pytest.fixture(scope="module")

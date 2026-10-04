@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 import httpx2
 
-from prometheus.backend import MetricsError, QueryDone
 from prometheus.constants import METRIC_VALUE_DECIMALS, SERVICE_OVERVIEW_METRICS, Metric
+from prometheus.metrics.access import MetricsError, QueryDone
+from prometheus.metrics.queries import build_query
 from prometheus.models import MetricSample, ServiceHealth
-from prometheus.queries import build_query
 
 
 def _parse_value(raw: str) -> float | None:
@@ -15,7 +15,7 @@ def _parse_value(raw: str) -> float | None:
     return None if math.isnan(value) or math.isinf(value) else round(value, METRIC_VALUE_DECIMALS)
 
 
-class PrometheusBackend:
+class PrometheusReader:
     """Metrics from the Prometheus HTTP API (/api/v1/query and /api/v1/query_range)."""
 
     def __init__(

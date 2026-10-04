@@ -18,7 +18,7 @@ from mcp_types import ElicitResult
 from access.audit_log import AuditLog
 from access.constants import ACCESS_DENIED_ERROR_CODE, Scope
 from config import Settings
-from k8s.fake_operations import FakeOperations
+from k8s.cluster.fake import FakeClusterWriter
 from k8s.server import build_k8s_server
 
 pytestmark = pytest.mark.anyio
@@ -54,14 +54,14 @@ def approval_by(approver: str):
 
 @pytest.fixture
 def operations():
-    return FakeOperations()
+    return FakeClusterWriter()
 
 
 @pytest.fixture
 def server(operations, tmp_path):
     write_jwks(tmp_path / "jwks.json")
     server = build_k8s_server(Settings(_env_file=None, backend="fake", enable_write_tools=True,
-                                    auth_jwks_path=tmp_path / "jwks.json", user_roles=ROLES), operations=operations)
+                                    auth_jwks_path=tmp_path / "jwks.json", user_roles=ROLES), writer=operations)
     return server, server.streamable_http_app()
 
 
