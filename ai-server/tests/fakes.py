@@ -20,9 +20,8 @@ from mcp_types import (
 )
 from pydantic import BaseModel
 
-from agent import IncidentReport, IncidentScope
-from agent.models import EvidenceCitation, ProposedAction
-from mcp_client import connect_to_mcp
+from investigation.models import EvidenceCitation, IncidentReport, IncidentScope, ProposedAction
+from mcp_client.connection import connect_to_mcp
 
 TEST_MCP_TIMEOUT_SECONDS = 5
 

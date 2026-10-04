@@ -1,10 +1,2 @@
-from actions.registry import (
-    ActionRegistry,
-    ActionState,
-    ApprovalDecision,
-    SelfApprovalError,
-    UnknownActionError,
-    WrongActionStateError,
-)
-
-__all__ = ["ActionRegistry", "ActionState", "ApprovalDecision", "SelfApprovalError", "UnknownActionError", "WrongActionStateError"]
+"""Proposed changes run with a human's approval: POST /actions (router.py) and the
+in-memory registry that waits for the approval."""

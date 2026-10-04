@@ -3,16 +3,16 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
-from agent import MCPToolbox, ModelRouter, build_investigation_graph, run_investigation
-from api.dependencies import get_mcp_connector, get_model_router
 from config import Settings, get_settings
+from investigation.evidence.mcp_toolbox import MCPToolbox
+from investigation.service import run_investigation
+from investigation.workflow.graph import build_investigation_graph
+from llm.dependencies import get_model_router
+from llm.model_router import ModelRouter
 from main import app
-from mcp_client import (
-    list_all_resource_templates,
-    list_all_tools,
-    split_read_only,
-    to_langchain_tool,
-)
+from mcp_client.dependencies import get_mcp_connector
+from mcp_client.langchain_tools import list_all_resource_templates, list_all_tools, to_langchain_tool
+from mcp_client.tool_policy import split_read_only
 from tests.fakes import (
     PAYMENT_DOWN,
     build_fake_mcp_server,

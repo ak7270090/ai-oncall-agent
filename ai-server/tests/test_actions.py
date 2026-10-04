@@ -3,12 +3,14 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from actions import ActionRegistry
-from agent import ModelRouter
-from api.dependencies import get_action_registry, get_mcp_connector, get_model_router
+from actions.constants import ActionStatus
+from actions.dependencies import get_action_registry
+from actions.registry import ActionRegistry
 from config import Settings, get_settings
-from constants import ActionStatus
+from llm.dependencies import get_model_router
+from llm.model_router import ModelRouter
 from main import app
+from mcp_client.dependencies import get_mcp_connector
 from tests.fakes import (
     PAYMENT_DOWN,
     build_fake_mcp_server,

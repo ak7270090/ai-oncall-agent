@@ -24,7 +24,7 @@ server's URL.
 ai-oncall-agent/
 ├── mcp-server/
 │   ├── server.py              create_server(): registers the configured tool sets, auth, /health
-│   ├── config/settings.py     MCP_* settings
+│   ├── config.py              MCP_* settings
 │   ├── k8s/                   Kubernetes tool set: tools.py, write_tools.py, log_summary.py, resources.py,
 │   │                          completions.py; backend.py (interface), kubernetes_backend.py, operations.py,
 │   │                          models.py; fake_backend.py, fake_operations.py (MCP_BACKEND=fake)
@@ -35,17 +35,21 @@ ai-oncall-agent/
 │   ├── fake_incident.py       the canned incident both fakes serve
 │   ├── knowledge/             team knowledge: runbooks/<service>.md, topology/<namespace>.json
 │   └── tests/                 k8s/, prometheus/, shared tests; integration/ (live kind cluster, RBAC checks)
-├── ai-server/
-│   ├── main.py                create_app(), error → HTTP status mapping
-│   ├── api/                   routes, schemas, dependencies
-│   ├── agent/                 investigation.py (entry point), models.py (IncidentReport.to_markdown())
+├── ai-server/                 organized by domain; each has router.py, schemas.py, dependencies.py,
+│   │                          constants.py as it needs them
+│   ├── main.py                create_app(): includes the routers, error → HTTP status mapping
+│   ├── config.py              settings (+ SettingsDep)
+│   ├── health.py              /health, /ready, /tools
+│   ├── errors.py              which failures reach API callers, and how
+│   ├── tracing.py             Langfuse: one trace per investigation and per action
+│   ├── investigation/         POST /investigate(/stream): router.py, schemas.py, service.py (entry point),
+│   │   │                      models.py (IncidentReport), prompts.py, events.py (live events)
 │   │   ├── workflow/          graph.py (wiring), nodes.py (the steps), state.py
-│   │   ├── evidence/          collection_steps.py (deterministic checks), helpers.py (rules), mcp_toolbox.py
-│   │   └── llm/               chat_model.py (provider-agnostic), prompts.py
-│   ├── mcp_client/            connection.py, langchain_tools.py (MCP → LangChain adapter)
-│   ├── tracing/               langfuse_tracer.py (one Langfuse trace per investigation)
-│   ├── streaming/             investigation_events.py (live events for /investigate/stream)
-│   ├── config/settings.py
+│   │   └── evidence/          collection_steps.py (deterministic checks), analysis.py (rules), mcp_toolbox.py
+│   ├── actions/               POST /actions: router.py, registry.py (waits for approval), schemas.py
+│   ├── auth/                  API keys (dependencies.py), MCP tokens (tokens.py, token_keys.py)
+│   ├── llm/                   chat_model.py (provider-agnostic), model_router.py, sampling.py
+│   ├── mcp_client/            connection.py, server_group.py, langchain_tools.py, constants.py (MCP names)
 │   └── tests/                 unit tests + integration/ (real HTTP)
 ├── sample-services/       Phase 5 "production" apps: user-, payment-, order-service
 ├── kubernetes/            base/ (healthy system, ns shop), incidents/ (incident overlays), monitoring/ (Prometheus)
@@ -146,7 +150,7 @@ With `API_KEYS` set, every endpoint except `/health` and `/ready` needs an
 `X-API-Key` header (see "Who may do what").
 
 Errors: MCP server unreachable → `503`; LLM provider failure → `502` (details go
-to the server log only). The table is in `ai-server/api/errors.py`, shared by both
+to the server log only). The table is in `ai-server/errors.py`, shared by both
 investigate endpoints.
 
 To call MCP tools by hand, open the [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
@@ -348,7 +352,7 @@ LLM calls per incident.
   service throttled at its CPU limit was called a "slow dependency", and a service that
   was slow during the *previous* incident was blamed for the current one. Code now
   states both facts as **computed findings** in the root-cause and report prompts
-  (`agent/evidence/helpers.py::computed_findings`): "X is held at its CPU limit (250m):
+  (`investigation/evidence/analysis.py::computed_findings`): "X is held at its CPU limit (250m):
   throttled in 49% of CPU periods" and "slow right now: … / Y was slow earlier but has
   recovered". A service counts as CPU-starved only if it also uses at least 15% of its
   limit: an idle container with short bursts can look throttled too.
@@ -588,11 +592,11 @@ find_root_cause / write_report ─► the strong model reads the summary, not 20
   required" result and re-runs the tool with the answer. The question must be identical
   on that second run, so fetched lines are reused for `MCP_LOG_CACHE_SECONDS`.
   Short logs and clients that can't sample get raw lines.
-- **Model routing** (`ai-server/agent/llm/model_router.py`): two tiers. Sampling
+- **Model routing** (`ai-server/llm/model_router.py`): two tiers. Sampling
   requests go to the tier their preferences describe (a model-name hint wins; otherwise
   cost/speed above intelligence → fast). Graph steps listed in `FAST_MODEL_STEPS` use
   the fast tier; all others the strong one. Without `LLM_MODEL_FAST` nothing changes.
-- **SamplingResponder** (`agent/llm/sampling.py`) answers the requests: capped per
+- **SamplingResponder** (`llm/sampling.py`) answers the requests: capped per
   investigation (`MAX_SAMPLINGS_PER_INVESTIGATION`), recorded in the Langfuse trace and
   streamed as `llm` events with `model` and `purpose`. A failed summary falls back to
   raw lines.
@@ -648,7 +652,7 @@ How it works, in two hops:
    `ctx.report_progress(done, 3, "error_rate queried in 0.4s")`
    (`mcp-server/prometheus/helpers.py::query_progress_reporter`). The AI server passes a
    `progress_callback` with every `call_tool`, which is what asks the server for progress.
-2. **AI server → user (SSE).** `ai-server/streaming/` collects three sources into one
+2. **AI server → user (SSE).** `ai-server/investigation/events.py` collects three sources into one
    queue: LangChain callbacks (steps, tool calls, LLM calls, notes), MCP progress, and
    the final report or error. The route yields them with FastAPI's `EventSourceResponse`.
 
@@ -716,7 +720,7 @@ Without keys tracing is off. `/investigate` returns `trace_id` and `trace_url`
 `["incident:db-down"]`), and a W3C `traceparent` header to record the
 investigation inside the caller's trace.
 
-How it works (`ai-server/tracing/langfuse_tracer.py`):
+How it works (`ai-server/tracing.py`):
 
 - `run_investigation` opens a root span and passes Langfuse's LangChain
   `CallbackHandler` to the graph run. LangChain reports every step, LLM call and
@@ -762,7 +766,7 @@ Code layout (`ai-server/agent/`): `workflow/graph.py` only wires the flow; each
 step is a method of `InvestigationNodes` in `workflow/nodes.py`; the state passed
 between steps is `InvestigationState` in `workflow/state.py`; the collection steps
 are in `evidence/collection_steps.py` and the rules they use (unhealthy pods, failing or
-slow services…) in `evidence/helpers.py`; LLM setup and prompts are in `llm/`.
+slow services…) in `evidence/analysis.py`; LLM setup is in `llm/`, prompts in `prompts.py`.
 Step names, MCP tool names and other fixed values are in `ai-server/constants.py`.
 
 | Step | Who | What |
@@ -807,6 +811,6 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-server/k8s/resources.py`); read by the client with `read_resource`. |
 | Annotations / completions | `readOnlyHint` on every tool, enforced by the client; completions for resource-template arguments. |
 | Elicitation | Write tools ask for approval with `Resolve`/`Elicit`; the AI server answers via `Client(elicitation_callback=…)` from `POST /actions/{id}/approval`. |
-| Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`agent/llm/sampling.py`). |
+| Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`llm/sampling.py`). |
 | Authorization | Bearer tokens checked by `MCPServer(token_verifier=…)` with `AuthSettings` (401 + protected resource metadata); scopes and roles enforced by server middleware (`MCPServer(middleware=[…])`). |
 | Host / client | The AI server is the host. `mcp.Client` is the client. |

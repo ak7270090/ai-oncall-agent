@@ -9,16 +9,15 @@ from mcp_types import (
     TextContent,
 )
 
-from agent import (
-    MCPToolbox,
-    ModelRouter,
-    SamplingResponder,
-    build_investigation_graph,
-    run_investigation,
-)
 from config import Settings
-from constants import ModelTier, Step
-from mcp_client import list_all_tools, to_langchain_tool
+from investigation.constants import Step
+from investigation.evidence.mcp_toolbox import MCPToolbox
+from investigation.service import run_investigation
+from investigation.workflow.graph import build_investigation_graph
+from llm.constants import ModelTier
+from llm.model_router import ModelRouter
+from llm.sampling import SamplingResponder
+from mcp_client.langchain_tools import list_all_tools, to_langchain_tool
 from tests.fakes import (
     PAYMENT_DOWN,
     build_fake_mcp_server,

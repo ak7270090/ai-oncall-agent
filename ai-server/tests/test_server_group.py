@@ -4,8 +4,9 @@ import pytest
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from mcp_client import DuplicateToolError, MCPUnavailableError, connect_to_mcp_servers
+from mcp_client.connection import MCPUnavailableError, connect_to_mcp_servers
 from mcp_client.langchain_tools import extract_result_text
+from mcp_client.server_group import DuplicateToolError
 
 pytestmark = pytest.mark.anyio
 

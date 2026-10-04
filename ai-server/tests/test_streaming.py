@@ -3,17 +3,17 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from agent import IncidentReport, ModelRouter
-from api.dependencies import (
-    InvestigationDependencies,
-    get_mcp_connector,
-    get_model_router,
-)
-from api.routes import investigate_stream
-from api.schemas import InvestigateRequest
 from config import Settings, get_settings
-from constants import LLM_FAILURE_MESSAGE, EventStatus, Step, StreamEvent
+from investigation.constants import EventStatus, Step, StreamEvent
+from investigation.dependencies import InvestigationDependencies
+from investigation.models import IncidentReport
+from investigation.router import investigate_stream
+from investigation.schemas import InvestigateRequest
+from llm.constants import LLM_FAILURE_MESSAGE
+from llm.dependencies import get_model_router
+from llm.model_router import ModelRouter
 from main import app
+from mcp_client.dependencies import get_mcp_connector
 from tests.fakes import (
     PAYMENT_DOWN,
     build_fake_mcp_server,

@@ -1,21 +1,18 @@
 import pytest
 
-from agent import (
-    Evidence,
-    MCPToolbox,
-    ModelRouter,
-    build_investigation_graph,
-    run_investigation,
-)
-from agent.evidence.helpers import (
+from config import Settings
+from investigation.constants import Step
+from investigation.evidence.analysis import (
     computed_findings,
     services_blamed_in_logs,
     without_stale_pod_events,
 )
-from agent.investigation import reanalyze_evidence
-from config import Settings
-from constants import Step
-from mcp_client import list_all_tools, to_langchain_tool
+from investigation.evidence.mcp_toolbox import MCPToolbox
+from investigation.models import Evidence
+from investigation.service import reanalyze_evidence, run_investigation
+from investigation.workflow.graph import build_investigation_graph
+from llm.model_router import ModelRouter
+from mcp_client.langchain_tools import list_all_tools, to_langchain_tool
 from tests.fakes import (
     PAYMENT_CRASHLOOP,
     PAYMENT_DOWN,

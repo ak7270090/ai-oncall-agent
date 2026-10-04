@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from api import action_router, router
-from api.errors import PUBLIC_ERRORS, handle_public_error
+from actions.router import router as actions_router
 from config import get_settings
+from errors import PUBLIC_ERRORS, handle_public_error
+from health import router as health_router
+from investigation.router import router as investigation_router
 from tracing import shutdown_tracers
 
 
@@ -18,8 +20,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title=get_settings().app_title, lifespan=lifespan)
-    app.include_router(router)
-    app.include_router(action_router)
+    for router in (health_router, investigation_router, actions_router):
+        app.include_router(router)
     for error_type in PUBLIC_ERRORS:
         app.add_exception_handler(error_type, handle_public_error)
     return app

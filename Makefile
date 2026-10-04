@@ -72,7 +72,7 @@ run-mcp-servers:
 	wait
 
 mcp-keys:
-	cd ai-server && .venv/$(VENV_BIN)/python -c "from mcp_client.token_keys import main; main()" ../$(KEYS_DIR)
+	cd ai-server && .venv/$(VENV_BIN)/python -c "from auth.token_keys import main; main()" ../$(KEYS_DIR)
 
 # The agentgateway release binary, checked against its published SHA-256.
 $(GATEWAY_BIN):

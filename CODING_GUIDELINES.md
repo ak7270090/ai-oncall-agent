@@ -8,14 +8,15 @@ message.
 
 - Every value that could differ between environments (URLs, ports, model names,
   timeouts, retry counts, limits) lives in the app's settings module
-  (`config/settings.py`, or `settings.py` for the single-file sample services),
+  (`config.py`, or `settings.py` for the single-file sample services),
   built with `pydantic-settings` and overridable with an environment variable
   or `.env`.
 - Automation values are variables at the top of the `Makefile` (`?=`, so
   `make <target> VAR=value` can override them), not literals inside recipes.
 - Document every setting in that app's `.env.example`.
 - Fixed values that are not settings (enum-like names, protocol and vocabulary strings,
-  tool argument limits, fixed user-facing messages) live in the app's `constants.py`,
+  tool argument limits, fixed user-facing messages) live in a `constants.py` (the domain's,
+  or the app's for values several domains use),
   never as module-level literals scattered across files. Use `StrEnum` for named sets
   (`Step`, `McpTool`, `Metric`) in both apps, and use its members in code
   (`Metric.ERROR_RATE`, not `"error_rate"`). Exception: an MCP tool argument is typed
@@ -43,7 +44,7 @@ message.
 ## 3. LLM access is provider-agnostic
 
 - App code never imports `openai`, `anthropic` or any other provider SDK.
-- Chat models are built only through `agent/llm/chat_model.py::create_chat_model`
+- Chat models are built only through `llm/chat_model.py::create_chat_model`
   (LangChain `init_chat_model`). To switch provider or model, change `LLM_MODEL`
   (`"<provider>:<model>"`) and `LLM_API_KEY`. No code changes.
 - Orchestration uses LangGraph. Tools reach the LLM as LangChain tools built
@@ -60,19 +61,28 @@ message.
 
 ## 5. Structure and reuse
 
-- One responsibility per module. Keep HTTP routes (`api/routes.py`), request and
-  response schemas (`api/schemas.py`), dependency wiring (`api/dependencies.py`),
-  domain logic (`agent/`, `mcp_client/`) and config (`config/`) separate.
-- When a package grows past a handful of files, split it into subpackages by
-  job, e.g. `agent/workflow/` (graph, steps, state), `agent/evidence/` (tool calls
-  and rules), `agent/llm/` (chat model, prompts). Shared types (`agent/models.py`)
-  and the entry point stay at the top. Keep subpackage `__init__.py` files empty;
-  the top-level `agent/__init__.py` exports the public API.
+- Organize by **domain**, not by file type. A domain folder holds everything about one
+  feature, in files with fixed names: `router.py` (HTTP routes), `schemas.py` (request
+  and response models), `dependencies.py` (FastAPI dependencies), `constants.py`,
+  `service.py` (the entry point of its logic), plus modules named after their job.
+  ai-server: `investigation/`, `actions/`, `auth/`, `llm/`, `mcp_client/`; mcp-server:
+  `k8s/`, `prometheus/`, `access/`.
+- Flat is better than nested: something that is one module stays a module
+  (`config.py`, `tracing.py`, `health.py`, `errors.py`); a folder needs at least two
+  modules that belong together. Split a domain into subfolders only when it has
+  several jobs of several files each (`investigation/workflow/`,
+  `investigation/evidence/`).
+- `__init__.py` only describes the package (a docstring). Import from the module that
+  defines a name (`from investigation.models import IncidentReport`), so every import
+  says where the code is. Exception: mcp-server's `k8s/` and `prometheus/` export their
+  backend factories (`create_backend`).
+- Constants live with their domain (`investigation/constants.py`); the app's top-level
+  `constants.py` keeps only values used across domains (trace names, health statuses).
 - Build objects in factory functions (`create_app`, `create_server`,
   `create_chat_model`, `build_investigation_graph`) so tests can build their own.
 - Group the MCP server by tool set, not by layer: `k8s/` and `prometheus/` each hold
   their tools, backends, models and fakes; only what both use is shared
-  (`tool_helpers.py`, `access/`, `config/`, `constants.py`, `fake_incident.py`).
+  (`tool_helpers.py`, `access/`, `config.py`, `constants.py`, `fake_incident.py`).
   Each module exports a tuple of tools, and `create_server` registers them all.
 - Before writing a helper, check whether one already exists. Extend it rather
   than copying it.
@@ -90,6 +100,12 @@ message.
     `_make_healthy_container`)
   - `extract_…` / `parse_…` pulls data out of something (`extract_result_text`, `parse_tool_output`)
   - `get_…` / `list_…` / `query_…` reads from a source (`get_pod`, `query_prometheus`)
+  - `create_…` makes an object that holds a resource, a client or an app
+    (`create_app`, `create_server`, `create_backend`, `create_chat_model`); `build_…`
+    assembles a value from parts without side effects (`build_query`,
+    `build_investigation_graph`, `build_mcp_connector`)
+  - FastAPI dependencies: `get_…` functions, used through `…Dep` aliases
+    (`get_current_user` → `CurrentUserDep`)
   
   Not `_pod_detail(raw)`, `result_text(result)` or `holds(condition)`.
 - Name files after their contents: `connection.py`, `collection_steps.py`,
@@ -104,11 +120,12 @@ message.
   sits in its own module next to the real one it replaces (`k8s/fake_backend.py`,
   `prometheus/fake_backend.py`), and the canned incident both serve is
   `fake_incident.py`. Test-only fakes stay in `tests/` (`tests/fakes.py`).
-- Small pure functions used by the other modules of a package go in that
-  package's `helpers.py` (`agent/evidence/helpers.py`, `prometheus/helpers.py`). Don't
-  create a project-wide `utils.py`.
+- Small pure functions go in a module named after what they do
+  (`investigation/evidence/analysis.py`: the rules that read evidence). `helpers.py`
+  only for a few small functions with no better common name (`prometheus/helpers.py`).
+  Never a project-wide `utils.py`.
 - Don't create a file for a single small function. Put it where it belongs,
-  e.g. formatting a report is `IncidentReport.to_markdown()` in `agent/models.py`.
+  e.g. formatting a report is `IncidentReport.to_markdown()` in `investigation/models.py`.
 - Name functions after their purpose in the domain, not a metaphor:
   `collect_namespace_overview`, not `sweep`. A reader should know what a function
   does without opening it.
@@ -118,7 +135,7 @@ message.
   (defaults, allowed namespaces) is built from settings at startup; small handler
   factories (`mcp_client/progress.py::progress_callback_for`,
   `prometheus/helpers.py::query_progress_reporter`) return a configured callback.
-- Keep state shapes in their own module (`agent/workflow/state.py`), next to a constructor for
+- Keep state shapes in their own module (`investigation/workflow/state.py`), next to a constructor for
   the initial state.
 
 ## 7. Comments and docstrings
@@ -245,7 +262,7 @@ message.
   can mislead (throttling *and* real CPU use).
 
 - Evidence gathering that should always happen goes in deterministic graph
-  steps (`agent/evidence/collection_steps.py`), not in the prompt. The LLM understands the
+  steps (`investigation/evidence/collection_steps.py`), not in the prompt. The LLM understands the
   question, reasons over evidence and writes the report. It doesn't decide the
   basic checks.
 - LLM outputs that code consumes are typed with `with_structured_output(Model)`
@@ -257,7 +274,7 @@ message.
 - A missing MCP tool degrades the investigation (step skipped and noted); it
   never breaks it.
 - The graph depends on MCP tool names and result fields. Change them in
-  `mcp-server` only together with `constants.py` (`McpTool`), `agent/evidence/collection_steps.py`
+  `mcp-server` only together with `mcp_client/constants.py` (`McpTool`), `investigation/evidence/collection_steps.py`
   and `tests/fakes.py`.
 
 ## 17. Incidents and evals
@@ -331,13 +348,13 @@ message.
   `InvestigationEvents` channel; the graph doesn't know it is being streamed.
 - A streaming endpoint cancels its work when the client disconnects (`finally:` in the
   generator), and reports errors as an `error` event with the same status codes and
-  messages as the JSON endpoint (`api/errors.py`).
+  messages as the JSON endpoint (`errors.py`).
 - Run linters per app, from that app's folder: run from another app, its local packages
   look like third-party ones and imports get reordered wrongly.
 
 ## 21. Model routing and MCP sampling
 
-- Models are chosen through `ModelRouter` (`agent/llm/model_router.py`), never by
+- Models are chosen through `ModelRouter` (`llm/model_router.py`), never by
   creating a second chat model in a step. Tiers are config (`LLM_MODEL`,
   `LLM_MODEL_FAST`, `FAST_MODEL_STEPS`), still `provider:model` strings.
 - Move a step to the cheaper tier only with an experiment showing the pass rate holds.

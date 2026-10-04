@@ -27,11 +27,12 @@ from experiment_tracking import (  # noqa: E402
 )
 from incident_cases import INCIDENT_CASES, IncidentCase  # noqa: E402
 
-from agent import Evidence, IncidentScope, create_model_router  # noqa: E402
-from agent.evidence.helpers import computed_findings  # noqa: E402
-from agent.investigation import reanalyze_evidence  # noqa: E402
 from config import get_settings  # noqa: E402
-from constants import McpOperation  # noqa: E402
+from investigation.evidence.analysis import computed_findings  # noqa: E402
+from investigation.models import Evidence, IncidentScope  # noqa: E402
+from investigation.service import reanalyze_evidence  # noqa: E402
+from llm.model_router import create_model_router  # noqa: E402
+from mcp_client.constants import McpOperation  # noqa: E402
 from tracing import InvestigationTracer, TraceLabels, create_tracer  # noqa: E402
 
 INCIDENT_CASES_BY_NAME = {s.name: s for s in INCIDENT_CASES}

@@ -1,4 +1,4 @@
-"""On-call MCP server. Configure with MCP_* environment variables (see config/settings.py)."""
+"""On-call MCP server. Configure with MCP_* environment variables (see config.py)."""
 
 import logging
 

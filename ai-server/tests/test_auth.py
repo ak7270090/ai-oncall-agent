@@ -4,14 +4,17 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-from actions import ActionRegistry
-from agent import ModelRouter
-from api.dependencies import get_action_registry, get_mcp_connector, get_model_router
+from actions.constants import ActionStatus
+from actions.dependencies import get_action_registry
+from actions.registry import ActionRegistry
+from auth.constants import WRITE_SCOPES
+from auth.token_keys import JWKS_FILE, PRIVATE_KEY_FILE, write_key_files
+from auth.tokens import McpTokenIssuer
 from config import Settings, get_settings
-from constants import WRITE_SCOPES, ActionStatus
+from llm.dependencies import get_model_router
+from llm.model_router import ModelRouter
 from main import app
-from mcp_client import McpTokenIssuer
-from mcp_client.token_keys import JWKS_FILE, PRIVATE_KEY_FILE, write_key_files
+from mcp_client.dependencies import get_mcp_connector
 from tests.fakes import PAYMENT_DOWN, build_fake_mcp_server, fake_connector, scripted_model
 from tests.test_actions import SCALE_UP, wait_for
 

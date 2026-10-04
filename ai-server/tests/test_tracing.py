@@ -2,17 +2,15 @@ import pytest
 from langfuse import Langfuse, LangfuseOtelSpanAttributes
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from agent import (
-    Evidence,
-    MCPToolbox,
-    ModelRouter,
-    build_investigation_graph,
-    reanalyze_evidence,
-    run_investigation,
-)
 from config import Settings
-from constants import INVESTIGATION_TRACE_NAME, Step
-from mcp_client import list_all_tools, to_langchain_tool
+from constants import INVESTIGATION_TRACE_NAME
+from investigation.constants import Step
+from investigation.evidence.mcp_toolbox import MCPToolbox
+from investigation.models import Evidence
+from investigation.service import reanalyze_evidence, run_investigation
+from investigation.workflow.graph import build_investigation_graph
+from llm.model_router import ModelRouter
+from mcp_client.langchain_tools import list_all_tools, to_langchain_tool
 from tests.fakes import (
     PAYMENT_DOWN,
     ScriptedChatModel,

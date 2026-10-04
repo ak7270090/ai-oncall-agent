@@ -23,37 +23,15 @@ from uuid import uuid4
 
 from mcp import Client
 from mcp_types import ElicitResult
-from pydantic import BaseModel, Field
 
-from agent.models import ProposedAction
-from constants import WRITE_SCOPES, ActionStatus
+from actions.constants import ACTION_ID_LENGTH, ActionStatus
+from actions.schemas import ActionState, ApprovalDecision
+from auth.constants import WRITE_SCOPES
+from investigation.models import ProposedAction
 from mcp_client.langchain_tools import extract_result_text
 from tracing import InvestigationTracer
 
 logger = logging.getLogger(__name__)
-
-ACTION_ID_LENGTH = 12
-
-
-class ApprovalDecision(BaseModel):
-    approve: bool
-    reason: str = Field(min_length=1, max_length=500, description="Why; kept with the result")
-
-
-class ActionState(BaseModel):
-    id: str
-    action: ProposedAction
-    namespace: str
-    status: ActionStatus
-    question: str | None = Field(default=None, description="What the MCP server asks the human to approve")
-    requested_by: str
-    approved_by: str | None = None
-    approval_reason: str | None = None
-    trace_id: str | None = None
-    trace_url: str | None = None
-    result: dict[str, Any] | None = Field(default=None, description="The MCP tool's OperationResult")
-    error: str | None = None
-    updated_at: datetime
 
 
 class UnknownActionError(Exception):

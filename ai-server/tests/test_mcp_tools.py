@@ -1,7 +1,7 @@
 import pytest
 from langchain_core.messages import ToolMessage
 
-from mcp_client import list_all_tools, to_langchain_tool
+from mcp_client.langchain_tools import list_all_tools, to_langchain_tool
 from tests.fakes import PAYMENT_CRASHLOOP, build_fake_mcp_server, fake_connector
 
 pytestmark = pytest.mark.anyio

@@ -3,12 +3,15 @@ from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.runnables import RunnableLambda
 
-from agent import ModelRouter, create_chat_model
-from api.dependencies import get_mcp_connector, get_model_router, get_service_mcp_connector
 from config import Settings, get_settings
-from constants import LLM_FAILURE_MESSAGE, Step
+from investigation.constants import Step
+from llm.chat_model import create_chat_model
+from llm.constants import LLM_FAILURE_MESSAGE
+from llm.dependencies import get_model_router
+from llm.model_router import ModelRouter
 from main import app
-from mcp_client import connect_to_mcp
+from mcp_client.connection import connect_to_mcp
+from mcp_client.dependencies import get_mcp_connector, get_service_mcp_connector
 from tests.fakes import (
     PAYMENT_DOWN,
     build_fake_mcp_server,

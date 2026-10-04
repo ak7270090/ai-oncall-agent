@@ -17,16 +17,12 @@ from pathlib import Path
 import pytest
 from mcp.shared.exceptions import MCPError
 
-from constants import READ_SCOPES, WRITE_SCOPES, McpOperation
-from mcp_client import (
-    McpTokenAuth,
-    McpTokenIssuer,
-    MCPUnavailableError,
-    connect_to_mcp,
-    connect_to_mcp_servers,
-    list_all_tools,
-)
-from mcp_client.token_keys import JWKS_FILE, PRIVATE_KEY_FILE, write_key_files
+from auth.constants import READ_SCOPES, WRITE_SCOPES
+from auth.token_keys import JWKS_FILE, PRIVATE_KEY_FILE, write_key_files
+from auth.tokens import McpTokenAuth, McpTokenIssuer
+from mcp_client.connection import MCPUnavailableError, connect_to_mcp, connect_to_mcp_servers
+from mcp_client.constants import McpOperation
+from mcp_client.langchain_tools import list_all_tools
 
 pytestmark = pytest.mark.anyio
 

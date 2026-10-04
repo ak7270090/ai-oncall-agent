@@ -20,7 +20,7 @@ from mcp.types import (
     Tool,
 )
 
-from constants import GATEWAY_TOOL_SEPARATOR, GATEWAY_URI_SEPARATOR
+from mcp_client.constants import GATEWAY_TOOL_SEPARATOR, GATEWAY_URI_SEPARATOR
 from mcp_client.langchain_tools import list_all_resource_template_objects, list_all_tools
 
 URI_TEMPLATE_VARIABLE_START = "{"
