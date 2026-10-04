@@ -18,7 +18,15 @@ import pytest
 from mcp.shared.exceptions import MCPError
 
 from constants import READ_SCOPES, WRITE_SCOPES, McpOperation
-from mcp_client import McpTokenAuth, McpTokenIssuer, MCPUnavailableError, connect_to_mcp, list_all_tools
+from mcp_client import (
+    McpTokenAuth,
+    McpTokenIssuer,
+    MCPUnavailableError,
+    connect_to_mcp,
+    connect_to_mcp_servers,
+    list_all_tools,
+)
+from mcp_client.token_keys import JWKS_FILE, PRIVATE_KEY_FILE, write_key_files
 
 pytestmark = pytest.mark.anyio
 
@@ -29,10 +37,8 @@ STARTUP_TIMEOUT_SECONDS = 20
 MCP_TIMEOUT_SECONDS = 10
 EXPECTED_TOOLS = {"list_pods", "get_pod_status", "get_pod_logs", "list_deployments", "get_deployment",
                   "list_events", "get_service_overview", "get_metrics"}
-SIGNING_KEY = "integration-test-signing-key-32-bytes!"
 # Overrides whatever the developer's mcp-server/.env sets; each test adds what it needs.
-BASELINE_SETTINGS = {"MCP_AUTH_SIGNING_KEY": "", "MCP_USER_ROLES": "{}", "MCP_ENABLE_WRITE_TOOLS": "false"}
-TOKENS = McpTokenIssuer(SIGNING_KEY, issuer="http://127.0.0.1:8000", audience="oncall-mcp-server", ttl_seconds=60)
+BASELINE_SETTINGS = {"MCP_AUTH_JWKS_PATH": "", "MCP_USER_ROLES": "{}", "MCP_ENABLE_WRITE_TOOLS": "false"}
 
 if not VENV_PYTHON.exists():
     pytest.skip(f"MCP server virtualenv not found at {VENV_PYTHON}", allow_module_level=True)
@@ -85,8 +91,17 @@ def mcp_server_url(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def authenticated_mcp_server_url(tmp_path_factory):
-    with running_mcp_server(tmp_path_factory.mktemp("audit") / "audit.jsonl", MCP_AUTH_SIGNING_KEY=SIGNING_KEY,
+def token_keys(tmp_path_factory) -> tuple[McpTokenIssuer, Path]:
+    """A fresh key pair: the issuer (private key) and the JWKS file (public key)."""
+    directory = tmp_path_factory.mktemp("keys")
+    write_key_files(directory)
+    issuer = McpTokenIssuer.from_key_file(directory / PRIVATE_KEY_FILE, "http://127.0.0.1:8000", "oncall-mcp-server", 60)
+    return issuer, directory / JWKS_FILE
+
+
+@pytest.fixture(scope="module")
+def authenticated_mcp_server_url(tmp_path_factory, token_keys):
+    with running_mcp_server(tmp_path_factory.mktemp("audit") / "audit.jsonl", MCP_AUTH_JWKS_PATH=str(token_keys[1]),
                             MCP_ENABLE_WRITE_TOOLS="true", MCP_USER_ROLES=json.dumps({"bob": "lead"})) as url:
         yield url
 
@@ -117,9 +132,9 @@ async def test_authenticated_server_refuses_requests_without_a_token(authenticat
 
 
 @pytest.mark.parametrize("scopes, sees_write_tools", [(READ_SCOPES, False), (WRITE_SCOPES, True)])
-async def test_token_scopes_decide_whether_write_tools_are_listed(authenticated_mcp_server_url, scopes,
+async def test_token_scopes_decide_whether_write_tools_are_listed(authenticated_mcp_server_url, token_keys, scopes,
                                                                   sees_write_tools):
-    auth = McpTokenAuth(TOKENS, "bob", scopes)
+    auth = McpTokenAuth(token_keys[0], "bob", scopes)
     async with connect_to_mcp(authenticated_mcp_server_url, MCP_TIMEOUT_SECONDS, auth=auth) as mcp_client:
         names = {tool.name for tool in await list_all_tools(mcp_client)}
         result = await mcp_client.call_tool("list_pods", {"app": "payment-service"})
@@ -127,8 +142,27 @@ async def test_token_scopes_decide_whether_write_tools_are_listed(authenticated_
     assert (set(McpOperation) <= names) is sees_write_tools
 
 
-async def test_person_without_a_role_is_refused(authenticated_mcp_server_url):
-    auth = McpTokenAuth(TOKENS, "mallory", READ_SCOPES)
+async def test_person_without_a_role_is_refused(authenticated_mcp_server_url, token_keys):
+    auth = McpTokenAuth(token_keys[0], "mallory", READ_SCOPES)
     with pytest.raises(MCPError, match="user mallory has no role"):
         async with connect_to_mcp(authenticated_mcp_server_url, MCP_TIMEOUT_SECONDS, auth=auth) as mcp_client:
             await mcp_client.call_tool("list_pods", {"app": "payment-service"})
+
+
+async def test_two_servers_one_per_toolset_work_as_one_client(tmp_path_factory, token_keys):
+    audit_dir = tmp_path_factory.mktemp("audit")
+    auth = McpTokenAuth(token_keys[0], "bob", WRITE_SCOPES)
+    settings = {"MCP_AUTH_JWKS_PATH": str(token_keys[1]), "MCP_USER_ROLES": json.dumps({"bob": "lead"})}
+    with (
+        running_mcp_server(audit_dir / "k8s.jsonl", MCP_TOOLSETS='["kubernetes"]', **settings) as k8s_url,
+        running_mcp_server(audit_dir / "prometheus.jsonl", MCP_TOOLSETS='["prometheus"]', **settings) as prometheus_url,
+    ):
+        servers = {"k8s": k8s_url, "prometheus": prometheus_url}
+        async with connect_to_mcp_servers(servers, MCP_TIMEOUT_SECONDS, auth=auth) as group:
+            names = {tool.name for tool in await list_all_tools(group)}
+            overview = await group.call_tool("get_service_overview", {})
+            pods = await group.call_tool("list_pods", {"app": "payment-service"})
+    assert names == EXPECTED_TOOLS
+    assert not overview.is_error and not pods.is_error
+    assert "get_service_overview" in (audit_dir / "prometheus.jsonl").read_text()
+    assert "list_pods" in (audit_dir / "k8s.jsonl").read_text()

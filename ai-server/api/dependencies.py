@@ -3,6 +3,7 @@ from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Security, status
@@ -13,7 +14,7 @@ from actions import ActionRegistry
 from agent import ModelRouter, create_model_router
 from config import Settings, get_settings
 from constants import AGENT_CLIENT_ID, ANONYMOUS_USER, API_KEY_HEADER, READ_SCOPES
-from mcp_client import McpTokenAuth, McpTokenIssuer, connect_to_mcp
+from mcp_client import McpTokenAuth, McpTokenIssuer, connect_to_mcp_servers
 from tracing import InvestigationTracer, create_tracer
 
 # Opens an MCP session for the signed-in user: optional sampling / elicitation callbacks,
@@ -49,15 +50,20 @@ def get_current_user(settings: Annotated[Settings, Depends(get_settings)],
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Missing or unknown API key ({API_KEY_HEADER} header)")
 
 
+@lru_cache
+def load_token_issuer(private_key_path: Path, issuer: str, audience: str, ttl_seconds: float) -> McpTokenIssuer:
+    return McpTokenIssuer.from_key_file(private_key_path, issuer, audience, ttl_seconds)
+
+
 def build_mcp_connector(settings: Settings, user: str) -> MCPConnector:
-    issuer = (McpTokenIssuer(settings.mcp_token_signing_key.get_secret_value(), settings.mcp_token_issuer,
-                             settings.mcp_token_audience, settings.mcp_token_ttl_seconds)
-              if settings.mcp_token_signing_key else None)
+    issuer = (load_token_issuer(settings.mcp_token_private_key_path, settings.mcp_token_issuer,
+                                settings.mcp_token_audience, settings.mcp_token_ttl_seconds)
+              if settings.mcp_token_private_key_path else None)
 
     def open_mcp(sampling_callback=None, elicitation_callback=None, scopes: tuple[str, ...] = READ_SCOPES):
         auth = McpTokenAuth(issuer, user, scopes) if issuer else None
-        return connect_to_mcp(settings.mcp_server_url, settings.mcp_timeout_seconds, sampling_callback,
-                              elicitation_callback, auth)
+        return connect_to_mcp_servers(settings.mcp_server_urls, settings.mcp_timeout_seconds, sampling_callback,
+                                      elicitation_callback, auth, settings.mcp_gateway_targets)
 
     return open_mcp
 

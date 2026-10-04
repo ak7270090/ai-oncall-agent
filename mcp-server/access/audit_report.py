@@ -22,7 +22,7 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def is_selected(record: dict, options: argparse.Namespace) -> bool:
-    if record["event"] == AuditEvent.APPROVAL_REQUESTED:
+    if record["event"] in (AuditEvent.APPROVAL_REQUESTED, AuditEvent.SAMPLING_REQUESTED):
         return False
     if not options.all and record["tool"] not in WRITE_TOOLS and record["event"] != AuditEvent.REFUSED:
         return False

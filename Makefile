@@ -14,14 +14,26 @@ PYTHON          ?= $(if $(filter Windows_NT,$(OS)),python,python3)
 VENV_BIN        := $(if $(filter Windows_NT,$(OS)),Scripts,bin)
 MCP_KUBE_DIR    := mcp-server/.kube
 MCP_TOKEN_TTL   ?= 24h
+K8S_MCP_PORT    ?= 9000
+PROMETHEUS_MCP_PORT ?= 9001
+GATEWAY_PORT    ?= 3000
+GATEWAY_VERSION ?= v1.6.0
+GATEWAY_ASSET   := agentgateway-$(if $(filter Windows_NT,$(OS)),windows-amd64.exe,$(if $(filter Darwin,$(shell uname -s)),darwin-arm64,linux-amd64))
+GATEWAY_BIN     := gateway/bin/$(GATEWAY_VERSION)-$(GATEWAY_ASSET)
+KEYS_DIR        := keys
 KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
 COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f docker-compose.yml -f docker-compose.kind.yml
+COMPOSE_GATEWAY := $(COMPOSE_KIND) -f docker-compose.gateway.yml
 
-.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
+.PHONY: images redeploy help setup run-mcp-server run-mcp-servers run-gateway mcp-keys up-kind-gateway run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
-	@echo "run-mcp-server      MCP server locally on http://127.0.0.1:9000/mcp"
+	@echo "run-mcp-server      one MCP server with every tool, locally on http://127.0.0.1:9000/mcp"
+	@echo "run-mcp-servers     two MCP servers: Kubernetes on :$(K8S_MCP_PORT), Prometheus on :$(PROMETHEUS_MCP_PORT)"
+	@echo "mcp-keys            key pair for MCP tokens: $(KEYS_DIR)/mcp-token-private.pem (AI server), $(KEYS_DIR)/jwks.json"
+	@echo "run-gateway         agentgateway $(GATEWAY_VERSION) on :$(GATEWAY_PORT) in front of run-mcp-servers"
+	@echo "up-kind-gateway     like up-kind, with both MCP servers behind agentgateway"
 	@echo "run-ai-server       AI server locally on http://127.0.0.1:8000"
 	@echo "up / down / logs    AI server + MCP server with docker compose (fake cluster data)"
 	@echo "up-kind             same, but the MCP server reads the kind cluster"
@@ -36,7 +48,7 @@ help:
 	@echo "eval [NAME=a,b]     inject each incident, ask the agent, grade its answer (needs cluster + both servers)"
 	@echo "replay [NAME=..] [TIMES=n] [RUN=..]  re-run only the LLM reasoning on evidence saved by an eval (seconds)"
 	@echo "audit [DEPLOYMENT=x] [SINCE=hours] [ALL=1]  who changed what and who approved it (MCP audit log)"
-	@echo "new-secret          print a random value for an API key or MCP_AUTH_SIGNING_KEY"
+	@echo "new-secret          print a random value for an API key"
 
 setup:
 	for app in $(PYTHON_APPS); do \
@@ -45,9 +57,39 @@ setup:
 		$$app/.venv/$(VENV_BIN)/python -m pip install -q -r $$app/requirements-dev.txt || exit 1; \
 	done
 	test -f ai-server/.env || cp ai-server/.env.example ai-server/.env
+	test -f mcp-server/.env || cp mcp-server/.env.example mcp-server/.env
 
 run-mcp-server:
 	cd mcp-server && .venv/$(VENV_BIN)/python server.py
+
+run-mcp-servers:
+	cd mcp-server && trap 'kill 0' INT TERM EXIT; \
+	MCP_TOOLSETS='["kubernetes"]' MCP_SERVER_NAME=oncall-k8s MCP_PORT=$(K8S_MCP_PORT) \
+		MCP_PUBLIC_URL=http://127.0.0.1:$(K8S_MCP_PORT)/mcp .venv/$(VENV_BIN)/python server.py & \
+	MCP_TOOLSETS='["prometheus"]' MCP_SERVER_NAME=oncall-prometheus MCP_PORT=$(PROMETHEUS_MCP_PORT) \
+		MCP_PUBLIC_URL=http://127.0.0.1:$(PROMETHEUS_MCP_PORT)/mcp MCP_AUDIT_LOG_PATH=logs/audit-prometheus.jsonl \
+		.venv/$(VENV_BIN)/python server.py & \
+	wait
+
+mcp-keys:
+	cd ai-server && .venv/$(VENV_BIN)/python -c "from mcp_client.token_keys import main; main()" ../$(KEYS_DIR)
+
+# The agentgateway release binary, checked against its published SHA-256.
+$(GATEWAY_BIN):
+	mkdir -p gateway/bin
+	url=https://github.com/agentgateway/agentgateway/releases/download/$(GATEWAY_VERSION)/$(GATEWAY_ASSET) && \
+	curl -sfL $$url -o $@.download && expected=$$(curl -sfL $$url.sha256 | cut -d' ' -f1) && \
+	actual=$$(sha256sum $@.download | cut -d' ' -f1) && \
+	if [ "$$expected" = "$$actual" ]; then mv $@.download $@ && chmod +x $@; else rm -f $@.download; \
+	echo "checksum mismatch for $(GATEWAY_ASSET)"; exit 1; fi
+
+run-gateway: $(GATEWAY_BIN)
+	K8S_MCP_URL=http://127.0.0.1:$(K8S_MCP_PORT)/mcp PROMETHEUS_MCP_URL=http://127.0.0.1:$(PROMETHEUS_MCP_PORT)/mcp \
+	MCP_JWKS_PATH=$(CURDIR)/$(KEYS_DIR)/jwks.json $(GATEWAY_BIN) -f gateway/agentgateway.yaml
+
+up-kind-gateway: mcp-kubeconfig
+	test -f $(KEYS_DIR)/jwks.json || $(MAKE) mcp-keys
+	$(COMPOSE_GATEWAY) up -d --build --wait
 
 run-ai-server:
 	cd ai-server && .venv/$(VENV_BIN)/python main.py

@@ -2,8 +2,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from constants import Toolset
 
 
 class Settings(BaseSettings):
@@ -19,6 +21,11 @@ class Settings(BaseSettings):
     # Host headers accepted when bound to a non-localhost address (DNS rebinding
     # protection). Empty = SDK default: protection on for localhost binds only.
     allowed_hosts: list[str] = []
+
+    # Which tools this process serves (Phase 22): kubernetes (pods, deployments, events,
+    # resources, write tools) and/or prometheus (metrics). Run one process per tool set to
+    # get two MCP servers, each with only its own credentials. Default: both.
+    toolsets: list[Toolset] = [Toolset.KUBERNETES, Toolset.PROMETHEUS]
 
     backend: Literal["kubernetes", "fake"] = "kubernetes"
     # Credentials of the read-only `mcp-server` ServiceAccount (`make mcp-kubeconfig`),
@@ -45,10 +52,16 @@ class Settings(BaseSettings):
     log_summary_max_tokens: int = 500
     log_cache_seconds: float = 30
 
-    # Authentication (Phase 19): bearer tokens are JWTs signed with this key (HS256), issued
-    # by the AI server for its signed-in user. Empty = no authentication (local dev only:
-    # anyone who reaches the port may call every tool).
-    auth_signing_key: SecretStr | None = None
+    # Authentication (Phase 19): bearer tokens are JWTs the AI server signs (RS256) for its
+    # signed-in user; checked with the public keys in this JWKS file (`make mcp-keys`).
+    # Empty = no authentication (local dev only: anyone who reaches the port may call
+    # every tool).
+    auth_jwks_path: Path | None = None
+
+    @field_validator("auth_jwks_path", mode="before")
+    @classmethod
+    def treat_empty_as_unset(cls, value):
+        return value or None
     # Must match the tokens' `iss` and `aud` claims. The issuer is published as this
     # server's authorization server (OAuth protected resource metadata).
     auth_issuer_url: str = "http://127.0.0.1:8000"

@@ -1,12 +1,15 @@
 """Phases 19-20 over real HTTP (in-process ASGI): bearer tokens, scopes, roles, four
 eyes and the audit log."""
 
+import json
 import time
 from contextlib import asynccontextmanager
 
 import httpx2
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
+from jwt.algorithms import RSAAlgorithm
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
@@ -20,7 +23,9 @@ from server import create_server
 
 pytestmark = pytest.mark.anyio
 
-SIGNING_KEY = "test-signing-key-at-least-32-bytes-long"
+SIGNING_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+SOMEONE_ELSES_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+KEY_ID = "test-key"
 BASE_URL = "http://127.0.0.1:9000"
 READ, WRITE = [Scope.READ], [Scope.READ, Scope.WRITE]
 ROLES = {"dev": "developer", "alice": "oncall", "bob": "lead", "carol": "lead"}
@@ -28,12 +33,17 @@ TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
 ROLLBACK = ("rollback_deployment", {"name": "payment-service", "revision": 1})
 
 
-def mint_token(user: str, scopes: list[str], expires_in: float = 60, key: str = SIGNING_KEY,
+def mint_token(user: str, scopes: list[str], expires_in: float = 60, key=SIGNING_KEY,
                audience: str = "oncall-mcp-server") -> str:
     now = int(time.time())
     claims = {"sub": user, "client_id": "oncall-ai-server", "scope": " ".join(scopes), "iat": now,
               "exp": now + expires_in, "iss": "http://127.0.0.1:8000", "aud": audience}
-    return jwt.encode(claims, key, algorithm="HS256")
+    return jwt.encode(claims, key, algorithm="RS256", headers={"kid": KEY_ID})
+
+
+def write_jwks(path) -> None:
+    jwk = RSAAlgorithm.to_jwk(SIGNING_KEY.public_key(), as_dict=True)
+    path.write_text(json.dumps({"keys": [{**jwk, "kid": KEY_ID, "alg": "RS256", "use": "sig"}]}))
 
 
 def approval_by(approver: str):
@@ -48,9 +58,10 @@ def operations():
 
 
 @pytest.fixture
-def server(operations):
+def server(operations, tmp_path):
+    write_jwks(tmp_path / "jwks.json")
     server = create_server(Settings(_env_file=None, backend="fake", enable_write_tools=True,
-                                    auth_signing_key=SIGNING_KEY, user_roles=ROLES), operations=operations)
+                                    auth_jwks_path=tmp_path / "jwks.json", user_roles=ROLES), operations=operations)
     return server, server.streamable_http_app()
 
 
@@ -75,7 +86,7 @@ def audit_records(audit_log_in_tmp) -> list[dict]:
 @pytest.mark.parametrize("token", [
     None,
     "not-a-jwt",
-    mint_token("bob", WRITE, key="someone-elses-key-at-least-32-bytes"),
+    mint_token("bob", WRITE, key=SOMEONE_ELSES_KEY),
     mint_token("bob", WRITE, expires_in=-120),
     mint_token("bob", WRITE, audience="another-server"),
     mint_token("bob", []),

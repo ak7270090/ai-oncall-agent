@@ -6,26 +6,49 @@ x-healthcheck: &healthcheck
   retries: 5
   start_period: 10s
 
+# Both MCP servers run the mcp-server image; MCP_TOOLSETS decides which tools each serves.
+x-mcp-server: &mcp-server
+  build: ./mcp-server
+  image: ai-oncall-agent-mcp-server
+  restart: unless-stopped
+  # MCP_USER_ROLES etc. (see mcp-server/.env.example; `make setup` creates it)
+  env_file: ./mcp-server/.env
+  volumes:
+    - ./mcp-server/logs:/app/logs
+  healthcheck:
+    <<: *healthcheck
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health')"]
+
 services:
-  mcp-server:
-    build: ./mcp-server
-    restart: unless-stopped
-    # Optional: MCP_AUTH_SIGNING_KEY, MCP_USER_ROLES, ... (see mcp-server/.env.example)
-    env_file:
-      - path: ./mcp-server/.env
-        required: false
-    volumes:
-      - ./mcp-server/logs:/app/logs
+  k8s-mcp-server:
+    <<: *mcp-server
     environment:
+      MCP_TOOLSETS: '["kubernetes"]'
+      MCP_AUTH_JWKS_PATH: ""   # MCP tokens: on with the gateway overlay (docker-compose.gateway.yml)
+      MCP_SERVER_NAME: oncall-k8s
       MCP_BACKEND: fake
       MCP_HOST: 0.0.0.0
       MCP_PORT: 9000
-      MCP_ALLOWED_HOSTS: '["mcp-server:*", "localhost:*", "127.0.0.1:*"]'
+      MCP_PUBLIC_URL: http://127.0.0.1:${K8S_MCP_PORT:-9000}/mcp
+      # agentgateway forwards the Host without a port.
+      MCP_ALLOWED_HOSTS: '["k8s-mcp-server", "k8s-mcp-server:*", "localhost:*", "127.0.0.1:*"]'
     ports:
-      - "127.0.0.1:${MCP_PORT:-9000}:9000"
-    healthcheck:
-      <<: *healthcheck
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health')"]
+      - "127.0.0.1:${K8S_MCP_PORT:-9000}:9000"
+
+  prometheus-mcp-server:
+    <<: *mcp-server
+    environment:
+      MCP_TOOLSETS: '["prometheus"]'
+      MCP_AUTH_JWKS_PATH: ""
+      MCP_SERVER_NAME: oncall-prometheus
+      MCP_BACKEND: fake
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 9000
+      MCP_PUBLIC_URL: http://127.0.0.1:${PROMETHEUS_MCP_PORT:-9001}/mcp
+      MCP_AUDIT_LOG_PATH: logs/audit-prometheus.jsonl
+      MCP_ALLOWED_HOSTS: '["prometheus-mcp-server", "prometheus-mcp-server:*", "localhost:*", "127.0.0.1:*"]'
+    ports:
+      - "127.0.0.1:${PROMETHEUS_MCP_PORT:-9001}:9000"
 
   ai-server:
     build: ./ai-server
@@ -34,11 +57,14 @@ services:
     environment:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8000
-      MCP_SERVER_URL: http://mcp-server:9000/mcp
+      MCP_SERVERS: '{"k8s": "http://k8s-mcp-server:9000/mcp", "prometheus": "http://prometheus-mcp-server:9000/mcp"}'
+      MCP_TOKEN_PRIVATE_KEY_PATH: ""
     ports:
       - "127.0.0.1:${AI_SERVER_PORT:-8000}:8000"
     depends_on:
-      mcp-server:
+      k8s-mcp-server:
+        condition: service_healthy
+      prometheus-mcp-server:
         condition: service_healthy
     healthcheck:
       <<: *healthcheck

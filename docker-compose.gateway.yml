@@ -1,0 +1,45 @@
+# Overlay for `make up-kind-gateway` (Phase 22): both MCP servers behind agentgateway.
+# The AI server knows one MCP URL (the gateway) and signs tokens with the private key;
+# the gateway and the servers check them with the public JWKS (`make mcp-keys`).
+services:
+  gateway:
+    image: cr.agentgateway.dev/agentgateway:v1.6.0
+    restart: unless-stopped
+    command: ["-f", "/config/agentgateway.yaml"]
+    environment:
+      K8S_MCP_URL: http://k8s-mcp-server:9000/mcp
+      PROMETHEUS_MCP_URL: http://prometheus-mcp-server:9000/mcp
+      MCP_JWKS_PATH: /keys/jwks.json
+    volumes:
+      - ./gateway/agentgateway.yaml:/config/agentgateway.yaml:ro
+      - ./keys/jwks.json:/keys/jwks.json:ro
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-3000}:3000"
+    depends_on:
+      k8s-mcp-server:
+        condition: service_healthy
+      prometheus-mcp-server:
+        condition: service_healthy
+
+  k8s-mcp-server:
+    environment:
+      MCP_AUTH_JWKS_PATH: /keys/jwks.json
+    volumes:
+      - ./keys/jwks.json:/keys/jwks.json:ro
+
+  prometheus-mcp-server:
+    environment:
+      MCP_AUTH_JWKS_PATH: /keys/jwks.json
+    volumes:
+      - ./keys/jwks.json:/keys/jwks.json:ro
+
+  ai-server:
+    environment:
+      MCP_SERVERS: '{"gateway": "http://gateway:3000/mcp"}'
+      MCP_GATEWAY_TARGETS: '["k8s", "prometheus"]'
+      MCP_TOKEN_PRIVATE_KEY_PATH: /keys/mcp-token-private.pem
+    volumes:
+      - ./keys/mcp-token-private.pem:/keys/mcp-token-private.pem:ro
+    depends_on:
+      gateway:
+        condition: service_started

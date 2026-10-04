@@ -11,6 +11,7 @@ from config import Settings, get_settings
 from constants import WRITE_SCOPES, ActionStatus
 from main import app
 from mcp_client import McpTokenIssuer
+from mcp_client.token_keys import JWKS_FILE, PRIVATE_KEY_FILE, write_key_files
 from tests.fakes import PAYMENT_DOWN, build_fake_mcp_server, fake_connector, scripted_model
 from tests.test_actions import SCALE_UP, wait_for
 
@@ -61,10 +62,13 @@ def test_requester_cannot_approve_their_own_action(client, performed):
     assert performed == ["scaled payment-service to 2"]
 
 
-def test_mcp_tokens_name_the_person_the_agent_and_the_scopes():
-    issuer = McpTokenIssuer("a-signing-key-of-at-least-32-bytes", "http://ai", "mcp", ttl_seconds=60)
-    claims = jwt.decode(issuer.mint("alice", WRITE_SCOPES), "a-signing-key-of-at-least-32-bytes",
-                        algorithms=["HS256"], audience="mcp", issuer="http://ai")
+def test_mcp_tokens_are_signed_with_the_private_key_and_checked_with_the_jwks(tmp_path):
+    write_key_files(tmp_path)
+    issuer = McpTokenIssuer.from_key_file(tmp_path / PRIVATE_KEY_FILE, "http://ai", "mcp", ttl_seconds=60)
+    token = issuer.mint("alice", WRITE_SCOPES)
+    public_keys = jwt.PyJWKSet.from_json((tmp_path / JWKS_FILE).read_text())
+    claims = jwt.decode(token, public_keys[jwt.get_unverified_header(token)["kid"]], algorithms=["RS256"],
+                        audience="mcp", issuer="http://ai")
     assert claims["sub"] == "alice" and claims["client_id"] == "oncall-ai-server"
     assert claims["scope"] == "k8s:read k8s:write" and claims["exp"] - claims["iat"] == 60
 

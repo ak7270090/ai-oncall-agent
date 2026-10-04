@@ -49,12 +49,16 @@ class McpScope(StrEnum):
 
 READ_SCOPES = (McpScope.READ,)
 WRITE_SCOPES = (McpScope.READ, McpScope.WRITE)
-MCP_TOKEN_ALGORITHM = "HS256"
+MCP_TOKEN_ALGORITHM = "RS256"
 # The agent named in the MCP tokens (`client_id`), and the person it acts for when
 # nobody signed in (no API keys configured) or for its own checks (/ready).
 AGENT_CLIENT_ID = "oncall-ai-server"
 ANONYMOUS_USER = "anonymous"
 API_KEY_HEADER = "X-API-Key"
+# How a gateway that multiplexes several MCP servers renames their tools and resource
+# URIs (agentgateway): k8s_list_pods, k8s+runbook://payment-service.
+GATEWAY_TOOL_SEPARATOR = "_"
+GATEWAY_URI_SEPARATOR = "+"
 
 
 class ActionStatus(StrEnum):

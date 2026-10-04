@@ -5,7 +5,7 @@ from typing import Any
 from mcp.server.auth.middleware.auth_context import get_access_token
 
 from access.policy import Caller
-from constants import ANONYMOUS_USER
+from constants import ANONYMOUS_USER, ELICITATION_METHOD
 
 TRACEPARENT_KEY = "traceparent"
 
@@ -28,8 +28,10 @@ def extract_trace_id(params: Mapping[str, Any]) -> str | None:
 
 
 def extract_questions(result: Mapping[str, Any]) -> list[str]:
-    """Questions of an `input_required` interim result (the approval asked of the human)."""
-    return [request.get("params", {}).get("message", "") for request in (result.get("inputRequests") or {}).values()]
+    """Questions an `input_required` interim result asks the human (approvals); sampling
+    requests to the client's LLM have none."""
+    return [request.get("params", {}).get("message", "") for request in (result.get("inputRequests") or {}).values()
+            if request.get("method") == ELICITATION_METHOD]
 
 
 def to_mapping(value: Any) -> Mapping[str, Any]:

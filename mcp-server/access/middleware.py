@@ -43,8 +43,9 @@ class AuthorizationMiddleware:
 
 class AuditMiddleware:
     """Records every tool call: who (person and agent), tool, arguments, outcome, the
-    approval of write tools, and the trace id. A write tool's first round (the approval
-    question) is recorded as `approval_requested`."""
+    approval of write tools, and the trace id. A first round that asks for input is
+    recorded as `approval_requested` (a human's approval) or `sampling_requested` (the
+    client's LLM, e.g. a log summary)."""
 
     def __init__(self, audit_log: AuditLog):
         self._audit_log = audit_log
@@ -67,7 +68,11 @@ class AuditMiddleware:
             raise
         mapping = to_mapping(result)
         if is_input_required(mapping):
-            self._audit_log.record(event=AuditEvent.APPROVAL_REQUESTED, **entry, questions=extract_questions(mapping))
+            questions = extract_questions(mapping)
+            if questions:
+                self._audit_log.record(event=AuditEvent.APPROVAL_REQUESTED, **entry, questions=questions)
+            else:
+                self._audit_log.record(event=AuditEvent.SAMPLING_REQUESTED, **entry)
             return result
         failed = bool(mapping.get("isError"))
         details: dict[str, Any] = {}

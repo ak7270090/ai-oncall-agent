@@ -12,3 +12,5 @@ evals/results/
 docs/WALKTHROUGH.md
 docs/LINKEDIN_POSTS.md
 mcp-server/logs/
+keys/
+gateway/bin/

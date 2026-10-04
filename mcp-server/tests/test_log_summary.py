@@ -2,6 +2,7 @@ import pytest
 from mcp import Client
 from mcp_types import CreateMessageResult, TextContent
 
+from access import AuditLog
 from config import Settings
 from constants import LOG_LINES_KEPT_WITH_SUMMARY, LOG_SUMMARY_TASK
 from server import create_server
@@ -28,7 +29,7 @@ class RecordingSampler:
                                    content=TextContent(type="text", text="2x could not resolve host payments-db"))
 
 
-async def test_summarize_asks_the_clients_llm_with_cheap_model_preferences():
+async def test_summarize_asks_the_clients_llm_with_cheap_model_preferences(audit_log_in_tmp):
     sampler = RecordingSampler()
     async with Client(summarizing_server(), sampling_callback=sampler) as client:
         result = (await client.call_tool("get_pod_logs", LOGS)).structured_content
@@ -40,6 +41,7 @@ async def test_summarize_asks_the_clients_llm_with_cheap_model_preferences():
     assert result["summary"] == "2x could not resolve host payments-db"
     assert result["summarized_by"] == "fast-model"
     assert len(result["lines"]) <= LOG_LINES_KEPT_WITH_SUMMARY
+    assert [r["event"] for r in AuditLog(audit_log_in_tmp).read()] == ["sampling_requested", "tool_call"]
 
 
 async def test_short_logs_and_clients_without_sampling_get_raw_lines():

@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+#
+# MCP gateway (Phase 22): one endpoint, http://127.0.0.1:3000/mcp, in front of the
+# Kubernetes and Prometheus MCP servers. agentgateway v1.6.0+ (multiplexing with
+# protocol 2026-07-28 clients was broken before).
+#
+# - Multiplexing: both servers' tools and resources are listed together, renamed after
+#   the target (k8s_list_pods, prometheus_get_metrics, k8s+runbook://{service}); the AI
+#   server maps them back (MCP_GATEWAY_TARGETS).
+# - Authentication: the AI server's JWTs (RS256) are checked with the public JWKS
+#   from `make mcp-keys`; no valid token, 401. The token is passed through, so the
+#   servers still know the person (roles, four eyes, audit stay there).
+# - Authorization (CEL): coarse rules here; a tool no rule allows is hidden and refused
+#   before it reaches a server.
+#
+# Variables: K8S_MCP_URL, PROMETHEUS_MCP_URL, MCP_JWKS_PATH (`make run-gateway` and
+# docker-compose set them).
+mcp:
+  port: 3000
+  policies:
+    jwtAuth:
+      mode: strict
+      issuer: http://127.0.0.1:8000
+      audiences: [oncall-mcp-server]
+      jwks:
+        file: ${MCP_JWKS_PATH}
+    backendAuth:
+      passthrough: {}
+    mcpAuthorization:
+      rules:
+      # Metrics: everyone signed in.
+      - 'mcp.tool.target == "prometheus"'
+      # Kubernetes reads: everyone signed in.
+      - 'mcp.tool.target == "k8s" && !(mcp.tool.name in ["restart_deployment", "scale_deployment", "rollback_deployment"])'
+      # Kubernetes writes: only tokens with the write scope (POST /actions). Which person
+      # may run which change is decided by the k8s server's roles.
+      - 'mcp.tool.target == "k8s" && jwt.scope.contains("k8s:write")'
+      # Team knowledge (runbooks, service map, deployment specs): everyone signed in.
+      # Without a rule, resources are hidden like any tool no rule allows.
+      - 'mcp.resource.target == "k8s"'
+  targets:
+  - name: k8s
+    mcp:
+      host: ${K8S_MCP_URL}
+  - name: prometheus
+    mcp:
+      host: ${PROMETHEUS_MCP_URL}

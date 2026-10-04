@@ -1,6 +1,7 @@
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,14 +14,26 @@ class Settings(BaseSettings):
 
     mcp_server_url: str = "http://127.0.0.1:9000/mcp"
     mcp_timeout_seconds: float = 30
+    # Several MCP servers (Phase 22): name -> URL, e.g. {"k8s": "http://127.0.0.1:9000/mcp",
+    # "prometheus": "http://127.0.0.1:9001/mcp"}, or one gateway. Empty = mcp_server_url only.
+    mcp_servers: dict[str, str] = {}
+    # Names of the gateway's targets when MCP_SERVERS is a gateway (e.g. ["k8s",
+    # "prometheus"]): it renames tools and resource URIs after them (k8s_list_pods,
+    # k8s+runbook://…); the AI server maps them back to the servers' own names.
+    mcp_gateway_targets: list[str] = []
 
     # Sign-in (Phase 19): API key (X-API-Key header) -> user name. Empty = no sign-in
     # (local dev only): everyone is "anonymous".
     api_keys: dict[str, str] = {}
-    # MCP bearer tokens, signed for the signed-in user with the key shared with the MCP
-    # server (its MCP_AUTH_SIGNING_KEY). Empty = no token sent. Issuer and audience must
-    # match the MCP server's MCP_AUTH_ISSUER_URL / MCP_AUTH_AUDIENCE.
-    mcp_token_signing_key: SecretStr | None = None
+    # MCP bearer tokens, signed for the signed-in user with this private key (RS256, from
+    # `make mcp-keys`); the MCP servers and the gateway verify them with the public JWKS.
+    # Empty = no token sent. Issuer and audience must match theirs.
+    mcp_token_private_key_path: Path | None = None
+
+    @field_validator("mcp_token_private_key_path", mode="before")
+    @classmethod
+    def treat_empty_as_unset(cls, value):
+        return value or None
     mcp_token_issuer: str = "http://127.0.0.1:8000"
     mcp_token_audience: str = "oncall-mcp-server"
     mcp_token_ttl_seconds: float = 60
@@ -66,6 +79,10 @@ class Settings(BaseSettings):
     langfuse_secret_key: SecretStr | None = None
     langfuse_base_url: str = "https://cloud.langfuse.com"
     langfuse_environment: str = "local"
+
+    @property
+    def mcp_server_urls(self) -> dict[str, str]:
+        return self.mcp_servers or {"mcp": self.mcp_server_url}
 
 
 @lru_cache

@@ -387,3 +387,17 @@ message.
 - Every tool call is audited, refusals included, with the trace id; the audit log is only
   appended to.
 - Off-by-default security switches warn loudly at startup when off.
+
+## 25. Several MCP servers and a gateway
+
+- One codebase may serve several MCP servers; each process builds only the backends of
+  its tool sets, so it holds only those credentials.
+- The AI server sees one merged client (`McpServerGroup`); the rest of the code never
+  knows how many servers there are. Duplicate tool names are a startup error.
+- A gateway's naming (prefixes) stays at the edge: strip it where the client connects,
+  keep plain names everywhere else.
+- Coarse rules (who may reach which tools) go in the gateway; rules that need the tool's
+  own data (roles with the user map, four eyes on the approver) stay in the server.
+- Verify a gateway with a checklist before relying on it: tools, progress, sampling,
+  elicitation, trace context, tokens. Pin its version.
+- Tokens are verified with public keys (JWKS); only the issuer holds the private key.

@@ -1,5 +1,5 @@
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Mapping
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import httpx2
 from mcp import Client
@@ -7,6 +7,8 @@ from mcp.client.session import ElicitationFnT, SamplingFnT
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
 from mcp.shared._httpx_utils import create_mcp_http_client
+
+from mcp_client.server_group import McpServerGroup
 
 
 class MCPUnavailableError(Exception):
@@ -48,3 +50,20 @@ async def connect_to_mcp(
         raise error from group
     except httpx2.TransportError as error:
         raise MCPUnavailableError(f"MCP server unreachable at {server}") from error
+
+
+@asynccontextmanager
+async def connect_to_mcp_servers(
+    servers: Mapping[str, str | MCPServer], timeout_seconds: float, sampling_callback: SamplingFnT | None = None,
+    elicitation_callback: ElicitationFnT | None = None, auth: httpx2.Auth | None = None,
+    gateway_targets: list[str] | None = None,
+) -> AsyncIterator[McpServerGroup]:
+    """One session per MCP server (name -> URL or in-process server), used as one client:
+    tools are merged and each call goes to the server that owns the tool (Phase 22)."""
+    async with AsyncExitStack() as sessions:
+        clients = {
+            name: await sessions.enter_async_context(
+                connect_to_mcp(server, timeout_seconds, sampling_callback, elicitation_callback, auth))
+            for name, server in servers.items()
+        }
+        yield await McpServerGroup(clients, gateway_targets).start()

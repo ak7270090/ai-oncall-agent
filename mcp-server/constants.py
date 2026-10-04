@@ -68,6 +68,13 @@ DEPLOYMENT_SPEC_URI = "k8s://{namespace}/deployments/{name}"
 
 HEALTH_STATUS_OK = "ok"
 
+# Tool sets one server process may serve (Phase 22): the same code runs as a Kubernetes
+# server and a Prometheus server, each with only its own credentials.
+class Toolset(StrEnum):
+    KUBERNETES = "kubernetes"
+    PROMETHEUS = "prometheus"
+
+
 # Write tools (Phase 18): the only tools that change the cluster.
 class Operation(StrEnum):
     RESTART_DEPLOYMENT = "restart_deployment"
@@ -78,13 +85,13 @@ class Operation(StrEnum):
 WRITE_TOOLS = frozenset(Operation)
 
 # Authentication (Phase 19): OAuth scopes of the MCP server's bearer tokens, and how the
-# tokens are signed (HMAC with a key shared with the AI server, which issues them).
+# tokens are signed (RS256 by the AI server, which issues them; checked with its public key).
 class Scope(StrEnum):
     READ = "k8s:read"
     WRITE = "k8s:write"
 
 
-TOKEN_ALGORITHM = "HS256"
+TOKEN_ALGORITHM = "RS256"
 TOKEN_REQUIRED_CLAIMS = ("exp", "iat", "sub", "iss", "aud", "scope")
 # Who calls when there is no token: stdio, in-process, or authentication switched off.
 ANONYMOUS_USER = "anonymous"
@@ -92,11 +99,14 @@ ANONYMOUS_USER = "anonymous"
 # Authorization and audit (Phase 20). JSON-RPC error code of a refused request (the
 # -32000..-32099 range is left to servers).
 ACCESS_DENIED_ERROR_CODE = -32003
+# Methods of the requests inside an `input_required` result.
+ELICITATION_METHOD = "elicitation/create"
 
 
 class AuditEvent(StrEnum):
     TOOL_CALL = "tool_call"
-    APPROVAL_REQUESTED = "approval_requested"
+    APPROVAL_REQUESTED = "approval_requested"   # a write tool asked a human (elicitation)
+    SAMPLING_REQUESTED = "sampling_requested"   # a tool asked the client's LLM (log summary)
     REFUSED = "refused"
 
 
