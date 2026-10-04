@@ -23,20 +23,17 @@ GATEWAY_BIN     := mcp-platform/gateway/bin/$(GATEWAY_VERSION)-$(GATEWAY_ASSET)
 KEYS_DIR        := keys
 KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
 COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f compose.yaml -f compose.kind.yaml
-COMPOSE_GATEWAY := $(COMPOSE_KIND) -f compose.gateway.yaml
 
-.PHONY: images redeploy help setup run-mcp-server run-mcp-servers run-gateway mcp-keys up-kind-gateway run-ai-server up up-kind down logs test lint cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
+.PHONY: images redeploy help setup run-mcp-servers run-gateway mcp-keys run-ai-server up up-kind down logs test lint cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
-	@echo "run-mcp-server      one MCP server with every tool, locally on http://127.0.0.1:9000/mcp"
 	@echo "run-mcp-servers     two MCP servers: Kubernetes on :$(K8S_MCP_PORT), Prometheus on :$(PROMETHEUS_MCP_PORT)"
 	@echo "mcp-keys            key pair for MCP tokens: $(KEYS_DIR)/mcp-token-private.pem (AI server), $(KEYS_DIR)/jwks.json"
-	@echo "run-gateway         agentgateway $(GATEWAY_VERSION) on :$(GATEWAY_PORT) in front of run-mcp-servers"
-	@echo "up-kind-gateway     like up-kind, with both MCP servers behind agentgateway"
+	@echo "run-gateway         agentgateway $(GATEWAY_VERSION) on :$(GATEWAY_PORT) in front of run-mcp-servers (the AI server uses it)"
 	@echo "run-ai-server       AI server locally on http://127.0.0.1:8000"
-	@echo "up / down / logs    AI server + MCP server with docker compose (fake cluster data)"
-	@echo "up-kind             same, but the MCP server reads the kind cluster"
+	@echo "up / down / logs    the whole system in docker compose: AI server, gateway, both MCP servers (fake data)"
+	@echo "up-kind             same, but the MCP servers read the kind cluster"
 	@echo "test                run every test suite"
 	@echo "lint                ruff over the whole repository (rules in ruff.toml)"
 	@echo "cluster-up          kind cluster: sample services + traffic ($(NAMESPACE)), Prometheus on :9090 ($(MONITORING_NS))"
@@ -59,17 +56,12 @@ setup:
 	done
 	test -f ai-server/.env || cp ai-server/.env.example ai-server/.env
 	test -f mcp-platform/server/.env || cp mcp-platform/server/.env.example mcp-platform/server/.env
-
-run-mcp-server:
-	cd mcp-platform/server && .venv/$(VENV_BIN)/python server.py
+	test -f $(KEYS_DIR)/jwks.json || $(MAKE) mcp-keys
 
 run-mcp-servers:
 	cd mcp-platform/server && trap 'kill 0' INT TERM EXIT; \
-	MCP_TOOLSETS='["kubernetes"]' MCP_SERVER_NAME=oncall-k8s MCP_PORT=$(K8S_MCP_PORT) \
-		MCP_PUBLIC_URL=http://127.0.0.1:$(K8S_MCP_PORT)/mcp .venv/$(VENV_BIN)/python server.py & \
-	MCP_TOOLSETS='["prometheus"]' MCP_SERVER_NAME=oncall-prometheus MCP_PORT=$(PROMETHEUS_MCP_PORT) \
-		MCP_PUBLIC_URL=http://127.0.0.1:$(PROMETHEUS_MCP_PORT)/mcp MCP_AUDIT_LOG_PATH=logs/audit-prometheus.jsonl \
-		.venv/$(VENV_BIN)/python server.py & \
+	MCP_K8S_SERVER__PORT=$(K8S_MCP_PORT) .venv/$(VENV_BIN)/python -m k8s.server & \
+	MCP_PROMETHEUS_SERVER__PORT=$(PROMETHEUS_MCP_PORT) .venv/$(VENV_BIN)/python -m prometheus.server & \
 	wait
 
 mcp-keys:
@@ -88,17 +80,16 @@ run-gateway: $(GATEWAY_BIN)
 	K8S_MCP_URL=http://127.0.0.1:$(K8S_MCP_PORT)/mcp PROMETHEUS_MCP_URL=http://127.0.0.1:$(PROMETHEUS_MCP_PORT)/mcp \
 	MCP_JWKS_PATH=$(CURDIR)/$(KEYS_DIR)/jwks.json $(GATEWAY_BIN) -f mcp-platform/gateway/agentgateway.yaml
 
-up-kind-gateway: mcp-kubeconfig
-	test -f $(KEYS_DIR)/jwks.json || $(MAKE) mcp-keys
-	$(COMPOSE_GATEWAY) up -d --build --wait
+$(KEYS_DIR)/jwks.json:
+	$(MAKE) mcp-keys
 
 run-ai-server:
 	cd ai-server && .venv/$(VENV_BIN)/python main.py
 
-up:
+up: $(KEYS_DIR)/jwks.json
 	docker compose up -d --build --wait
 
-up-kind: mcp-kubeconfig
+up-kind: mcp-kubeconfig $(KEYS_DIR)/jwks.json
 	$(COMPOSE_KIND) up -d --build --wait
 
 down:

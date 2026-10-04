@@ -6,7 +6,6 @@ its pods crash-loop; order-service fails downstream; user-service is healthy.
 
 from datetime import datetime, timezone
 
-from constants import Metric
 from k8s.models import (
     ClusterEvent,
     Condition,
@@ -15,6 +14,7 @@ from k8s.models import (
     PodDetail,
     ReplicaSetRevision,
 )
+from prometheus.constants import Metric
 
 NAMESPACE = "shop"
 CPU_LIMIT = "250m"

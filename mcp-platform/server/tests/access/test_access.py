@@ -15,11 +15,11 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 from mcp_types import ElicitResult
 
-from access import AuditLog
+from access.audit_log import AuditLog
+from access.constants import ACCESS_DENIED_ERROR_CODE, Scope
 from config import Settings
-from constants import ACCESS_DENIED_ERROR_CODE, Scope
 from k8s.fake_operations import FakeOperations
-from server import create_server
+from k8s.server import build_k8s_server
 
 pytestmark = pytest.mark.anyio
 
@@ -60,7 +60,7 @@ def operations():
 @pytest.fixture
 def server(operations, tmp_path):
     write_jwks(tmp_path / "jwks.json")
-    server = create_server(Settings(_env_file=None, backend="fake", enable_write_tools=True,
+    server = build_k8s_server(Settings(_env_file=None, backend="fake", enable_write_tools=True,
                                     auth_jwks_path=tmp_path / "jwks.json", user_roles=ROLES), operations=operations)
     return server, server.streamable_http_app()
 
@@ -106,18 +106,16 @@ async def test_protected_resource_metadata_names_issuer_and_scopes(server):
     assert metadata["scopes_supported"] == [Scope.READ]
 
 
-async def test_read_token_sees_no_write_tools_and_cannot_call_them(server, operations, audit_log_in_tmp):
-    async with connect(server, mint_token("bob", READ)) as client:
-        names = {tool.name for tool in (await client.list_tools()).tools}
+async def test_refusal_happens_before_the_tool_and_is_audited(server, operations, audit_log_in_tmp):
+    async with connect(server, mint_token("alice", WRITE)) as client:
         with pytest.raises(MCPError) as refused:
             await client.call_tool(*ROLLBACK)
-    assert "get_deployment" in names and "rollback_deployment" not in names
-    assert refused.value.code == ACCESS_DENIED_ERROR_CODE and "lacks scope k8s:write" in refused.value.message
+    assert refused.value.code == ACCESS_DENIED_ERROR_CODE
     assert operations.performed == []
     assert audit_records(audit_log_in_tmp)[-1] | {"time": None, "duration_ms": None} == {
-        "time": None, "event": "refused", "user": "bob", "client": "oncall-ai-server", "tool": "rollback_deployment",
+        "time": None, "event": "refused", "user": "alice", "client": "oncall-ai-server", "tool": "rollback_deployment",
         "arguments": ROLLBACK[1], "trace_id": None, "outcome": "refused", "duration_ms": None,
-        "error": "Access denied: the token lacks scope k8s:write, needed for rollback_deployment"}
+        "error": "Access denied: role oncall may not call rollback_deployment"}
 
 
 @pytest.mark.parametrize("user, tool, arguments, refusal", [

@@ -1,6 +1,6 @@
 import fake_incident
-from constants import WARNING_EVENT_TYPE
 from k8s.backend import no_previous_container_error, not_found_error
+from k8s.constants import WARNING_EVENT_TYPE
 from k8s.models import (
     ClusterEvent,
     ContainerSpec,

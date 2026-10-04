@@ -92,12 +92,14 @@ message.
   backend factories (`create_backend`).
 - Constants live with their domain (`investigation/constants.py`); the app's top-level
   `constants.py` keeps only values used across domains (trace names, health statuses).
-- Build objects in factory functions (`create_app`, `create_server`,
+- Build objects in factory functions (`create_app`, `build_k8s_server`,
   `create_chat_model`, `build_investigation_graph`) so tests can build their own.
 - Group the MCP server by tool set, not by layer: `k8s/` and `prometheus/` each hold
   their tools, backends, models and fakes; only what both use is shared
-  (`tool_helpers.py`, `access/`, `config.py`, `constants.py`, `fake_incident.py`).
-  Each module exports a tuple of tools, and `create_server` registers them all.
+  (`base_server.py`, `tool_definitions.py`, `access/`, `config.py`, `constants.py`,
+  `fake_incident.py`). Each MCP server has its own entry point (`k8s/server.py`,
+  `prometheus/server.py`); no setting decides what a process is.
+  Each tool module returns its tool definitions, and its server registers them.
 - Before writing a helper, check whether one already exists. Extend it rather
   than copying it.
 - Don't write speculative code: no unused parameters, abstractions or files for
@@ -115,7 +117,7 @@ message.
   - `extract_…` / `parse_…` pulls data out of something (`extract_result_text`, `parse_tool_output`)
   - `get_…` / `list_…` / `query_…` reads from a source (`get_pod`, `query_prometheus`)
   - `create_…` makes an object that holds a resource, a client or an app
-    (`create_app`, `create_server`, `create_backend`, `create_chat_model`); `build_…`
+    (`create_app`, `create_backend`, `create_chat_model`); `build_…`
     assembles a value from parts without side effects (`build_query`,
     `build_investigation_graph`, `build_mcp_connector`)
   - FastAPI dependencies: `get_…` functions, used through `…Dep` aliases

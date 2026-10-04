@@ -8,8 +8,9 @@ import argparse
 from datetime import datetime, timedelta, timezone
 
 from access.audit_log import AuditLog
+from access.constants import AuditEvent
 from config import get_settings
-from constants import WRITE_TOOLS, AuditEvent
+from k8s.constants import WRITE_TOOLS
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -53,7 +54,8 @@ def describe(record: dict, trace_url_template: str | None) -> str:
 
 def main() -> None:
     options, settings = parse_arguments(), get_settings()
-    records = [r for r in AuditLog(settings.audit_log_path).read() if is_selected(r, options)]
+    logs = (settings.k8s_server.audit_log_path, settings.prometheus_server.audit_log_path)
+    records = sorted((r for path in logs for r in AuditLog(path).read() if is_selected(r, options)), key=lambda r: r["time"])
     print("\n".join(describe(r, settings.trace_url_template) for r in records) or "No matching audit records.")
 
 

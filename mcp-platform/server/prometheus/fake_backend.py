@@ -1,8 +1,8 @@
 from datetime import timedelta
 
 import fake_incident
-from constants import SERVICE_OVERVIEW_METRICS, Metric
 from prometheus.backend import QueryDone
+from prometheus.constants import SERVICE_OVERVIEW_METRICS, Metric
 from prometheus.models import MetricSample, ServiceHealth
 
 SAMPLE_STEP = timedelta(minutes=1)

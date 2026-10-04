@@ -2,30 +2,49 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from constants import Toolset
+
+class ServerIdentity(BaseModel):
+    """What differs between the two MCP servers. Override one field with e.g.
+    MCP_K8S_SERVER__PORT=9100."""
+
+    name: str
+    port: int
+    # Public MCP URL, published in the OAuth protected resource metadata.
+    public_url: str
+    # Append-only audit log of this server's tool calls and approvals (JSON lines).
+    audit_log_path: Path
+
+
+class K8sServerIdentity(ServerIdentity):
+    name: str = "oncall-k8s"
+    port: int = 9000
+    public_url: str = "http://127.0.0.1:9000/mcp"
+    audit_log_path: Path = Path("logs/audit-k8s.jsonl")
+
+
+class PrometheusServerIdentity(ServerIdentity):
+    name: str = "oncall-prometheus"
+    port: int = 9001
+    public_url: str = "http://127.0.0.1:9001/mcp"
+    audit_log_path: Path = Path("logs/audit-prometheus.jsonl")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MCP_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="MCP_", env_file=".env", extra="ignore", env_nested_delimiter="__")
 
-    server_name: str = "oncall-mcp-server"
-    server_version: str = "0.7.0"
+    k8s_server: K8sServerIdentity = K8sServerIdentity()
+    prometheus_server: PrometheusServerIdentity = PrometheusServerIdentity()
+    server_version: str = "0.8.0"
     transport: Literal["streamable-http", "stdio"] = "streamable-http"
     host: str = "127.0.0.1"
-    port: int = 9000
     path: str = "/mcp"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     # Host headers accepted when bound to a non-localhost address (DNS rebinding
     # protection). Empty = SDK default: protection on for localhost binds only.
     allowed_hosts: list[str] = []
-
-    # Which tools this process serves (Phase 22): kubernetes (pods, deployments, events,
-    # resources, write tools) and/or prometheus (metrics). Run one process per tool set to
-    # get two MCP servers, each with only its own credentials. Default: both.
-    toolsets: list[Toolset] = [Toolset.KUBERNETES, Toolset.PROMETHEUS]
 
     backend: Literal["kubernetes", "fake"] = "kubernetes"
     # Credentials of the read-only `mcp-server` ServiceAccount (`make mcp-kubeconfig`),
@@ -52,22 +71,20 @@ class Settings(BaseSettings):
     log_summary_max_tokens: int = 500
     log_cache_seconds: float = 30
 
-    # Authentication (Phase 19): bearer tokens are JWTs the AI server signs (RS256) for its
-    # signed-in user; checked with the public keys in this JWKS file (`make mcp-keys`).
-    # Empty = no authentication (local dev only: anyone who reaches the port may call
-    # every tool).
+    # Authentication (Phases 19, 22): bearer tokens are JWTs the AI server signs (RS256) for
+    # its signed-in user; checked with the public keys in this JWKS file (`make mcp-keys`).
+    # The gateway checks them first; the servers check again, since they learn the person
+    # from the token. Empty = no authentication (tests, in-process only).
     auth_jwks_path: Path | None = None
 
     @field_validator("auth_jwks_path", mode="before")
     @classmethod
     def treat_empty_as_unset(cls, value):
         return value or None
-    # Must match the tokens' `iss` and `aud` claims. The issuer is published as this
-    # server's authorization server (OAuth protected resource metadata).
+    # Must match the tokens' `iss` and `aud` claims. The issuer is published as the
+    # servers' authorization server (OAuth protected resource metadata).
     auth_issuer_url: str = "http://127.0.0.1:8000"
     auth_audience: str = "oncall-mcp-server"
-    # This server's public MCP URL, published in the protected resource metadata.
-    public_url: str = "http://127.0.0.1:9000/mcp"
 
     # Authorization (Phase 20): each user's role, and the write tools each role may call
     # and approve. Every known role may call the read-only tools; unknown users nothing.
@@ -77,8 +94,6 @@ class Settings(BaseSettings):
         "oncall": ["restart_deployment", "scale_deployment"],
         "lead": ["restart_deployment", "scale_deployment", "rollback_deployment"],
     }
-    # Append-only audit log of tool calls and approvals (JSON lines).
-    audit_log_path: Path = Path("logs/audit.jsonl")
     # Shown next to trace ids by `make audit`, e.g.
     # https://cloud.langfuse.com/project/<project-id>/traces/{trace_id}
     trace_url_template: str | None = None

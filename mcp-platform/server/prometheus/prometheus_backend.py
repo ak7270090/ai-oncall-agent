@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import httpx2
 
-from constants import METRIC_VALUE_DECIMALS, SERVICE_OVERVIEW_METRICS, Metric
 from prometheus.backend import MetricsError, QueryDone
+from prometheus.constants import METRIC_VALUE_DECIMALS, SERVICE_OVERVIEW_METRICS, Metric
 from prometheus.models import MetricSample, ServiceHealth
 from prometheus.queries import build_query
 

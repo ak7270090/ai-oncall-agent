@@ -12,6 +12,7 @@ from auth.dependencies import CurrentUserDep
 from auth.tokens import McpTokenAuth, McpTokenIssuer
 from config import Settings, SettingsDep
 from mcp_client.connection import connect_to_mcp_servers
+from mcp_client.constants import GATEWAY_NAME
 
 # Opens an MCP session for the signed-in user: optional sampling / elicitation callbacks,
 # and the token scopes (default: read only).
@@ -30,8 +31,8 @@ def build_mcp_connector(settings: Settings, user: str) -> MCPConnector:
 
     def open_mcp(sampling_callback=None, elicitation_callback=None, scopes: tuple[str, ...] = READ_SCOPES):
         auth = McpTokenAuth(issuer, user, scopes) if issuer else None
-        return connect_to_mcp_servers(settings.mcp_server_urls, settings.mcp_timeout_seconds, sampling_callback,
-                                      elicitation_callback, auth, settings.mcp_gateway_targets)
+        return connect_to_mcp_servers({GATEWAY_NAME: settings.mcp_gateway_url}, settings.mcp_timeout_seconds,
+                                      sampling_callback, elicitation_callback, auth, settings.mcp_gateway_targets)
 
     return open_mcp
 

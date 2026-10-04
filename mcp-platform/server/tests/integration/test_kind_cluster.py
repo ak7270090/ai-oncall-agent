@@ -7,7 +7,8 @@ from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
 from config import Settings
-from k8s import ClusterError, KubernetesBackend
+from k8s.backend import ClusterError
+from k8s.kubernetes_backend import KubernetesBackend
 
 SETTINGS = Settings(_env_file=None)
 NAMESPACE = SETTINGS.default_namespace

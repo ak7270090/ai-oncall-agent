@@ -38,7 +38,7 @@ already passes all six incidents.
 ## Tool annotations and completions (Phase 16)
 
 - **Annotations:** every tool is registered with `readOnlyHint=true`,
-  `destructiveHint=false`, `idempotentHint=true` (`tool_helpers.py::READ_ONLY_TOOL`).
+  `destructiveHint=false`, `idempotentHint=true` (`tool_definitions.py::READ_ONLY_TOOL`).
   The AI server gives the agent **only** tools annotated read-only
   (`mcp_client/tool_policy.py`); a tool without annotations counts as unsafe and is
   logged and left out. `GET /tools` shows `read_only` / `destructive` per tool. Hints

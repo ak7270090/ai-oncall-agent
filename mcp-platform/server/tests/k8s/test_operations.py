@@ -5,7 +5,7 @@ from mcp_types import ElicitResult
 
 from config import Settings
 from k8s.fake_operations import FakeOperations
-from server import create_server
+from k8s.server import build_k8s_server
 
 pytestmark = pytest.mark.anyio
 WRITE_TOOLS = {"restart_deployment", "scale_deployment", "rollback_deployment"}
@@ -28,7 +28,7 @@ REJECT = ElicitResult(action="accept", content={"approve": False, "reason": "not
 
 
 def server_with_write_tools(operations: FakeOperations):
-    return create_server(Settings(_env_file=None, backend="fake", enable_write_tools=True), operations=operations)
+    return build_k8s_server(Settings(_env_file=None, backend="fake", enable_write_tools=True), operations=operations)
 
 
 async def call(human: Human | None, tool: str, arguments: dict, operations: FakeOperations):
@@ -37,7 +37,7 @@ async def call(human: Human | None, tool: str, arguments: dict, operations: Fake
 
 
 async def test_write_tools_are_off_by_default_and_destructive_when_on():
-    async with Client(create_server(Settings(_env_file=None, backend="fake"))) as client:
+    async with Client(build_k8s_server(Settings(_env_file=None, backend="fake"))) as client:
         assert not WRITE_TOOLS & {t.name for t in (await client.list_tools()).tools}
     async with Client(server_with_write_tools(FakeOperations())) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}

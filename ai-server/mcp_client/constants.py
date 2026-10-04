@@ -47,5 +47,6 @@ SUMMARIZE_ARGUMENT = "summarize"
 
 # How a gateway that multiplexes several MCP servers renames their tools and resource
 # URIs (agentgateway): k8s_list_pods, k8s+runbook://payment-service.
+GATEWAY_NAME = "gateway"
 GATEWAY_TOOL_SEPARATOR = "_"
 GATEWAY_URI_SEPARATOR = "+"

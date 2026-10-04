@@ -6,14 +6,14 @@ from mcp_types import CreateMessageResult
 from pydantic import Field
 
 from config import Settings
-from constants import (
+from k8s.backend import ClusterBackend
+from k8s.constants import (
     DEFAULT_EVENT_LIMIT,
     DEFAULT_LOG_LINES,
     LOG_LINES_KEPT_WITH_SUMMARY,
     MAX_EVENT_LIMIT,
     MAX_LOG_LINES,
 )
-from k8s import ClusterBackend
 from k8s.log_summary import (
     RecentLogs,
     build_log_summary_request,
@@ -29,7 +29,7 @@ from k8s.models import (
     PodLogs,
     summarize_pod,
 )
-from tool_helpers import READ_ONLY_TOOL, ToolDefinition, namespace_guard
+from tool_definitions import READ_ONLY_TOOL, ToolDefinition, namespace_guard
 
 
 def build_kubernetes_tools(backend: ClusterBackend, settings: Settings) -> list[ToolDefinition]:

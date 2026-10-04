@@ -15,8 +15,9 @@ from typing import Any
 from mcp.server.mcpserver.exceptions import ResourceError
 
 from config import Settings
-from constants import DEPLOYMENT_SPEC_URI, NAME_PATTERN, RUNBOOK_URI, TOPOLOGY_URI
-from k8s import ClusterBackend
+from constants import NAME_PATTERN
+from k8s.backend import ClusterBackend
+from k8s.constants import DEPLOYMENT_SPEC_URI, RUNBOOK_URI, TOPOLOGY_URI
 
 
 @dataclass(frozen=True)

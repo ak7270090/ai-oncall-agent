@@ -11,9 +11,8 @@ from mcp_types import (
 )
 
 from config import Settings
-from constants import DEPLOYMENT_SPEC_URI, RUNBOOK_URI, TOPOLOGY_URI
-from k8s import ClusterBackend
-from k8s.backend import ClusterError
+from k8s.backend import ClusterBackend, ClusterError
+from k8s.constants import DEPLOYMENT_SPEC_URI, RUNBOOK_URI, TOPOLOGY_URI
 from k8s.resources import runbook_services
 
 

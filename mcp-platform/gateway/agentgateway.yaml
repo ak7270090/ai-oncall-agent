@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://agentgateway.dev/schema/config
 #
-# MCP gateway (Phase 22): one endpoint, http://127.0.0.1:3000/mcp, in front of the
-# Kubernetes and Prometheus MCP servers. agentgateway v1.6.0+ (multiplexing with
+# MCP gateway (Phase 22): the only way to the MCP servers. One endpoint,
+# http://127.0.0.1:3000/mcp, in front of the Kubernetes and Prometheus MCP servers. agentgateway v1.6.0+ (multiplexing with
 # protocol 2026-07-28 clients was broken before).
 #
 # - Multiplexing: both servers' tools and resources are listed together, renamed after

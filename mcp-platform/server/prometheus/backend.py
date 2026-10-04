@@ -3,7 +3,7 @@ from typing import Protocol
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from constants import Metric
+from prometheus.constants import Metric
 from prometheus.models import MetricSample, ServiceHealth
 
 

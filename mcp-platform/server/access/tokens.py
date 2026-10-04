@@ -12,8 +12,10 @@ from pathlib import Path
 
 import jwt
 from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
 
-from constants import TOKEN_ALGORITHM, TOKEN_REQUIRED_CLAIMS
+from access.constants import TOKEN_ALGORITHM, TOKEN_REQUIRED_CLAIMS, Scope
+from config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,3 +37,19 @@ class SignedTokenVerifier:
         return AccessToken(token=token, client_id=claims.get("client_id", claims["sub"]),
                            scopes=claims["scope"].split(), expires_at=claims["exp"], subject=claims["sub"],
                            claims=claims)
+
+
+def build_token_auth(settings: Settings, public_url: str) -> dict:
+    """MCPServer arguments for bearer-token authentication: every HTTP request needs a
+    valid token with scope k8s:read, else 401 pointing to the protected resource metadata
+    (/.well-known/oauth-protected-resource/mcp). Empty without MCP_AUTH_JWKS_PATH."""
+    if not settings.auth_jwks_path:
+        logger.warning("MCP_AUTH_JWKS_PATH is not set: no authentication, anyone who reaches the port may call the tools")
+        return {}
+    return {
+        "token_verifier": SignedTokenVerifier(settings.auth_jwks_path, settings.auth_issuer_url,
+                                              settings.auth_audience),
+        "auth": AuthSettings(issuer_url=settings.auth_issuer_url, resource_server_url=public_url,
+                             required_scopes=[Scope.READ],
+                             validate_token_resource=False),  # SignedTokenVerifier checks the audience
+    }

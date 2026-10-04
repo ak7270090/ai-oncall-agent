@@ -9,7 +9,8 @@ from kubernetes import client as k8s
 from kubernetes.client.rest import ApiException
 from urllib3.exceptions import MaxRetryError
 
-from k8s import ClusterError, KubernetesBackend
+from k8s.backend import ClusterError
+from k8s.kubernetes_backend import KubernetesBackend
 
 NAMESPACE = "shop"
 CREATED = datetime(2026, 9, 27, 10, 0, tzinfo=timezone.utc)

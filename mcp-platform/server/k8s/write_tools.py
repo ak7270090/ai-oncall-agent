@@ -24,12 +24,13 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.resolve import Elicit, Resolve
 from pydantic import BaseModel, Field
 
-from access import AccessPolicy, get_caller
+from access.policy import AccessPolicy, get_caller
 from config import Settings
-from constants import Operation
-from k8s import ClusterBackend, ClusterOperations
+from k8s.backend import ClusterBackend
+from k8s.constants import Operation
 from k8s.models import OperationResult
-from tool_helpers import ToolDefinition, change_tool, namespace_guard
+from k8s.operations import ClusterOperations
+from tool_definitions import ToolDefinition, change_tool, namespace_guard
 
 
 class Approval(BaseModel):

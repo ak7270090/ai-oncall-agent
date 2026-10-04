@@ -13,10 +13,10 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-# The audit log (MCP_AUDIT_LOG_PATH); compose mounts it so `make audit` can read it.
+# The audit logs (one per server); compose mounts the folder so `make audit` can read them.
 RUN mkdir -p logs && chown 10001 logs
 
 # Numeric UID so Kubernetes runAsNonRoot can verify it.
 USER 10001
-EXPOSE 9000
-CMD ["python", "server.py"]
+EXPOSE 9000 9001
+CMD ["python", "-m", "k8s.server"]

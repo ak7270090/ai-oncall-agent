@@ -12,7 +12,7 @@ cpu_throttled_ratio uses kubelet cAdvisor series, labelled by `container` (our
 container names equal service names) instead of `service`.
 """
 
-from constants import BYTES_PER_MIB, Metric
+from prometheus.constants import BYTES_PER_MIB, Metric
 
 
 def build_label_selector(namespace: str, service: str | None = None, service_label: str = "service") -> str:

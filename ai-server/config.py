@@ -14,15 +14,12 @@ class Settings(BaseSettings):
     server_host: str = "127.0.0.1"
     server_port: int = 8000
 
-    mcp_server_url: str = "http://127.0.0.1:9000/mcp"
+    # The MCP gateway (Phase 22): the only MCP endpoint the AI server uses. Its targets
+    # are the MCP servers behind it; it renames tools and resource URIs after them
+    # (k8s_list_pods, k8s+runbook://…) and the AI server maps them back.
+    mcp_gateway_url: str = "http://127.0.0.1:3000/mcp"
+    mcp_gateway_targets: list[str] = ["k8s", "prometheus"]
     mcp_timeout_seconds: float = 30
-    # Several MCP servers (Phase 22): name -> URL, e.g. {"k8s": "http://127.0.0.1:9000/mcp",
-    # "prometheus": "http://127.0.0.1:9001/mcp"}, or one gateway. Empty = mcp_server_url only.
-    mcp_servers: dict[str, str] = {}
-    # Names of the gateway's targets when MCP_SERVERS is a gateway (e.g. ["k8s",
-    # "prometheus"]): it renames tools and resource URIs after them (k8s_list_pods,
-    # k8s+runbook://…); the AI server maps them back to the servers' own names.
-    mcp_gateway_targets: list[str] = []
 
     # Sign-in (Phase 19): API key (X-API-Key header) -> user name. Empty = no sign-in
     # (local dev only): everyone is "anonymous".
@@ -81,10 +78,6 @@ class Settings(BaseSettings):
     langfuse_secret_key: SecretStr | None = None
     langfuse_base_url: str = "https://cloud.langfuse.com"
     langfuse_environment: str = "local"
-
-    @property
-    def mcp_server_urls(self) -> dict[str, str]:
-        return self.mcp_servers or {"mcp": self.mcp_server_url}
 
 
 @lru_cache

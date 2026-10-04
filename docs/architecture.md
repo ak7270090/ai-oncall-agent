@@ -55,7 +55,7 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 
 | Concept | Where |
 | --- | --- |
-| MCP server and tools | `mcp-platform/server/server.py`. The JSON Schema for each tool comes from its type hints (`Literal` → `enum`, `Field(ge, le)` → `minimum`/`maximum`), and the docstring becomes the description the LLM reads. |
+| MCP servers and tools | `mcp-platform/server/k8s/server.py`, `prometheus/server.py` (shared parts in `base_server.py`). The JSON Schema for each tool comes from its type hints (`Literal` → `enum`, `Field(ge, le)` → `minimum`/`maximum`), and the docstring becomes the description the LLM reads. |
 | Discovery / invocation | `tools/list` in `mcp_client/langchain_tools.py`, `tools/call` through each LangChain tool |
 | Tool errors | Schema violations and `ToolError` come back as `is_error=True`. The SDK hides the text of unexpected exceptions. |
 | Transport | Streamable HTTP at `/mcp`. stdio is available with `MCP_TRANSPORT=stdio`. |

@@ -2,11 +2,11 @@ import pytest
 from mcp import Client
 from mcp_types import CreateMessageResult, TextContent
 
-from access import AuditLog
+from access.audit_log import AuditLog
 from config import Settings
-from constants import LOG_LINES_KEPT_WITH_SUMMARY, LOG_SUMMARY_TASK
+from k8s.constants import LOG_LINES_KEPT_WITH_SUMMARY, LOG_SUMMARY_TASK
 from k8s.log_summary import RecentLogs
-from server import create_server
+from k8s.server import build_k8s_server
 
 pytestmark = pytest.mark.anyio
 CRASHING_POD = "payment-service-7d9f8c6b5-2xkqp"
@@ -14,7 +14,7 @@ LOGS = {"pod": CRASHING_POD, "previous": True, "summarize": True}
 
 
 def summarizing_server(min_lines: int = 1):
-    return create_server(Settings(_env_file=None, backend="fake", log_summary_min_lines=min_lines))
+    return build_k8s_server(Settings(_env_file=None, backend="fake", log_summary_min_lines=min_lines))
 
 
 class RecordingSampler:

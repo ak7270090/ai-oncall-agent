@@ -11,18 +11,16 @@ from mcp.shared.exceptions import MCPError
 from mcp_types.methods import is_input_required
 
 from access.audit_log import AuditLog
-from access.helpers import elapsed_ms, extract_questions, extract_trace_id, get_caller, to_mapping
-from access.policy import AccessPolicy
-from constants import ACCESS_DENIED_ERROR_CODE, WRITE_TOOLS, AuditEvent, AuditOutcome, Scope
+from access.constants import ACCESS_DENIED_ERROR_CODE, AuditEvent, AuditOutcome
+from access.mcp_messages import extract_questions, extract_trace_id, to_mapping
+from access.policy import AccessPolicy, get_caller
 
 CALL_TOOL = "tools/call"
-LIST_TOOLS = "tools/list"
 OPERATION_AUDIT_FIELDS = ("done", "detail", "approval", "approval_reason", "requested_by", "approved_by")
 
 
 class AuthorizationMiddleware:
-    """Refuses tool calls the caller's role (or token scope) doesn't allow, and hides the
-    write tools from tokens without k8s:write."""
+    """Refuses tool calls the caller's role doesn't allow."""
 
     def __init__(self, policy: AccessPolicy):
         self._policy = policy
@@ -32,13 +30,7 @@ class AuthorizationMiddleware:
             refusal = self._policy.refusal_for_call(get_caller(), to_mapping(ctx.params).get("name"))
             if refusal:
                 raise MCPError(code=ACCESS_DENIED_ERROR_CODE, message=f"Access denied: {refusal}")
-        result = await call_next(ctx)
-        if ctx.method == LIST_TOOLS and Scope.WRITE not in get_caller().scopes:
-            listing = dict(to_mapping(result))
-            listing["tools"] = [tool for tool in listing.get("tools", [])
-                                if to_mapping(tool).get("name") not in WRITE_TOOLS]
-            return listing
-        return result
+        return await call_next(ctx)
 
 
 class AuditMiddleware:
@@ -47,8 +39,9 @@ class AuditMiddleware:
     recorded as `approval_requested` (a human's approval) or `sampling_requested` (the
     client's LLM, e.g. a log summary)."""
 
-    def __init__(self, audit_log: AuditLog):
+    def __init__(self, audit_log: AuditLog, write_tools: frozenset[str]):
         self._audit_log = audit_log
+        self._write_tools = write_tools
 
     async def __call__(self, ctx: Any, call_next: Any) -> HandlerResult:
         if ctx.method != CALL_TOOL:
@@ -64,7 +57,7 @@ class AuditMiddleware:
             refused = error.code == ACCESS_DENIED_ERROR_CODE
             self._audit_log.record(event=AuditEvent.REFUSED if refused else AuditEvent.TOOL_CALL, **entry,
                                    outcome=AuditOutcome.REFUSED if refused else AuditOutcome.ERROR,
-                                   error=error.message, duration_ms=elapsed_ms(started))
+                                   error=error.message, duration_ms=_elapsed_ms(started))
             raise
         mapping = to_mapping(result)
         if is_input_required(mapping):
@@ -78,11 +71,14 @@ class AuditMiddleware:
         details: dict[str, Any] = {}
         if failed:
             details["error"] = " ".join(c.get("text", "") for c in mapping.get("content", []))
-        elif tool in WRITE_TOOLS:
+        elif tool in self._write_tools:
             outcome = mapping.get("structuredContent") or {}
             details = {key: outcome.get(key) for key in OPERATION_AUDIT_FIELDS}
         self._audit_log.record(event=AuditEvent.TOOL_CALL, **entry,
                                outcome=AuditOutcome.ERROR if failed else AuditOutcome.OK,
-                               **details, duration_ms=elapsed_ms(started))
+                               **details, duration_ms=_elapsed_ms(started))
         return result
 
+
+def _elapsed_ms(started: float) -> int:
+    return round((monotonic() - started) * 1000)

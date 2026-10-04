@@ -77,12 +77,12 @@ expires.
 
 | Value | Used by | Notes |
 | --- | --- | --- |
-| `kubernetes` (default) | `make run-mcp-server`, `make up-kind` | Reads the cluster and its Prometheus |
+| `kubernetes` (default) | `make run-mcp-servers`, `make up-kind` | Reads the cluster and its Prometheus |
 | `fake` | `make up`, unit tests | The canned incident, for both Kubernetes and metrics tools |
 
 **Try it:** run `make cluster-up`, break something (e.g.
 `kubectl -n shop set image deploy/payment-service payment-service=payment-service:v2`),
-then `make run-mcp-server` and `make run-ai-server`, or `make up-kind`, and ask
+then `make run-mcp-servers`, `make run-gateway` and `make run-ai-server`, or `make up-kind`, and ask
 `/investigate` what's wrong.
 
 ## Metrics with Prometheus (Phase 7)

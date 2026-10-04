@@ -76,7 +76,7 @@ person --X-API-Key--> AI server --Bearer JWT (sub=aman, client_id=oncall-ai-serv
 - **Four eyes:** the person who starts an action can't approve it (403 at the AI server),
   and the MCP server checks again: the approver named in the elicitation answer must be
   someone else whose role may run that tool.
-- **Audit log** (`MCP_AUDIT_LOG_PATH`, JSON lines, append-only): every tool call with
+- **Audit log** (one per MCP server, `logs/audit-k8s.jsonl`, JSON lines, append-only): every tool call with
   person, agent, arguments, outcome, approval (requested by, approved by, reason) and the
   Langfuse trace id that the MCP client sends in `_meta.traceparent`. Each action is its
   own Langfuse trace, tagged with the user.
@@ -99,55 +99,46 @@ rollback; the oncall user was refused; the lead who started it couldn't approve 
 (403); an oncall approver was refused by the MCP server; a second lead's approval rolled
 it back (error rate → 0). `make audit` showed all of it with the trace links.
 
-## Two MCP servers and a gateway (Phase 22)
+## Two MCP servers behind a gateway (Phase 22)
 
-The MCP server now runs as **two servers** from one codebase, and the AI server can talk
-to them directly or through **agentgateway**, an open-source MCP gateway.
+The tool side of MCP is **two servers** (`mcp-platform/server/`), each with its own entry
+point, and **agentgateway** in front of them. The gateway is mandatory: the AI server
+knows only the gateway's URL, and the MCP servers aren't reachable otherwise in Docker.
 
 ```text
-direct:   AI server ─┬─► k8s server :9000          (pods, deployments, events, runbooks, write tools)
-                     └─► prometheus server :9001   (get_service_overview, get_metrics)
-
-gateway:  AI server ──► agentgateway :3000 ─┬─► k8s server :9000
-            (one URL)    JWT check, CEL rules └─► prometheus server :9001
+AI server ──► agentgateway :3000 ─┬─► Kubernetes MCP server :9000   python -m k8s.server
+ (one URL)    token check,        │     pods, deployments, events, runbooks, write tools
+              which tools a token └─► Prometheus MCP server :9001   python -m prometheus.server
+              may reach                 service overview, metrics
 ```
 
-- **Two servers, one image:** `MCP_TOOLSETS` (`kubernetes`, `prometheus`, or both)
-  decides which tools a process serves, and it builds only those backends: the
-  Prometheus server gets no Kubernetes credentials, the Kubernetes server no Prometheus
-  URL. `make run-mcp-servers` starts both; compose runs `k8s-mcp-server` and
-  `prometheus-mcp-server`.
-- **Several servers in the AI server** (`ai-server/mcp_client/server_group.py`):
-  `MCP_SERVERS={"k8s": …, "prometheus": …}` opens one session per server, merges their
-  tools and resource templates, and sends each call to the server that owns the tool.
-  The rest of the AI server is unchanged: the group looks like one `mcp.Client`. The
-  same tool name on two servers is refused at start.
+- **Two servers, one codebase:** `k8s/server.py` and `prometheus/server.py` each build
+  their server on `base_server.py` (token check, audit and role middleware, `/health`)
+  and add only their own tools and backends: the Prometheus server holds no Kubernetes
+  credentials. Each has its own name, port and audit log (`MCP_K8S_SERVER__PORT`, …).
+- **Who checks what:**
+
+  | | Gateway | MCP servers |
+  | --- | --- | --- |
+  | Token valid? (401 otherwise) | yes | yes again: they learn the person from it |
+  | Which tools a token may reach (read vs write scope) | yes (CEL rules) | no |
+  | Roles, four eyes (approver ≠ requester, approver's role) | no | yes: needs the role map and the tool's approval answer |
+  | Audit log | access log | every call, approval and outcome, with the trace id |
+
 - **The gateway** (`mcp-platform/gateway/agentgateway.yaml`, agentgateway v1.6.0):
-  - multiplexes both servers on one URL; tool names get the target as prefix
-    (`k8s_list_pods`, `k8s+runbook://…`), which the AI server maps back (`MCP_GATEWAY_TARGETS`)
-  - checks every request's JWT (401 without one) and passes it through, so the servers
-    still know the person (roles, four eyes, audit stay there)
-  - CEL rules: metrics and Kubernetes reads for everyone signed in; write tools only with
-    scope `k8s:write`; the team-knowledge resources for everyone signed in (they need a
-    rule of their own). Whatever no rule allows is hidden and refused before it reaches
-    a server.
-  - Progress, log summaries (sampling) and approvals (elicitation) work through it:
-    protocol 2026-07-28's "input required" rounds are plain requests a proxy can pass.
+  multiplexes both servers on one URL. Tool names get the target as prefix
+  (`k8s_list_pods`, `k8s+runbook://…`), which the AI server maps back
+  (`MCP_GATEWAY_TARGETS`, `ai-server/mcp_client/server_group.py`). CEL rules: metrics and
+  Kubernetes reads for everyone signed in, write tools only with scope `k8s:write`, the
+  team-knowledge resources for everyone signed in. Whatever no rule allows is hidden and
+  refused before it reaches a server. Progress, log summaries (sampling) and approvals
+  (elicitation) pass through: protocol 2026-07-28's "input required" rounds are plain
+  requests.
 - **Tokens signed with a key pair (RS256):** the AI server signs with
-  `keys/mcp-token-private.pem`; the gateway and the servers verify with
-  `keys/jwks.json` (`make mcp-keys`). Verifiers can't mint tokens.
+  `keys/mcp-token-private.pem`; the gateway and the servers verify with `keys/jwks.json`
+  (`make mcp-keys`, run by `make setup` and `make up`). Verifiers can't mint tokens.
 - **Why agentgateway:** open source (Linux Foundation), one binary or container, YAML
-  config, and it supports protocol 2026-07-28 (use ≥ v1.6.0: earlier versions broke
-  tool calls with two or more servers). IBM ContextForge still implements 2025-11-25.
+  config, and it supports protocol 2026-07-28 (use ≥ v1.6.0: earlier versions broke tool
+  calls with two or more servers). IBM ContextForge still implements 2025-11-25.
 
-```bash
-make mcp-keys                                   # once
-MCP_ENABLE_WRITE_TOOLS=true make run-mcp-servers  # terminal 1
-make run-gateway                                # terminal 2 (downloads the binary, checks its SHA-256)
-# ai-server/.env: MCP_SERVERS={"gateway": "http://127.0.0.1:3000/mcp"}
-#                 MCP_GATEWAY_TARGETS=["k8s", "prometheus"]
-make run-ai-server                              # terminal 3
-make up-kind-gateway                            # or all of it in Docker, against the kind cluster
-```
-
-Verified on the kind cluster: two servers directly: eval 6/6, proposed fixes 3/3. Through the gateway: the first run lost the runbooks (resources were renamed to `k8s+runbook://…` and no CEL rule allowed them); fixed, the evidence matched the direct run item for item. high-cpu then failed once because the incident's CPU load had faded (peak throttling 92% → 23%, then no symptom at all); in Docker (`make up-kind-gateway`) high-cpu and bad-deploy passed. Approvals through the gateway: four eyes enforced, rollback done, error rate → 0. Gateway overhead: +1 to +4 ms per tool call (median of 30). In Docker the gateway forwards `Host` without a port, so the servers' allowed hosts list the bare names.
+Verified on the kind cluster (when built): two serversVerified on the kind cluster: two servers directly: eval 6/6, proposed fixes 3/3. Through the gateway: the first run lost the runbooks (resources were renamed to `k8s+runbook://…` and no CEL rule allowed them); fixed, the evidence matched the direct run item for item. high-cpu then failed once because the incident's CPU load had faded (peak throttling 92% → 23%, then no symptom at all); in Docker (`make up-kind`) high-cpu and bad-deploy passed. Approvals through the gateway: four eyes enforced, rollback done, error rate → 0. Gateway overhead: +1 to +4 ms per tool call (median of 30). In Docker the gateway forwards `Host` without a port, so the servers' allowed hosts list the bare names.

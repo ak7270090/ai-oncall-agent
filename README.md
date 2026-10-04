@@ -41,23 +41,24 @@ ai-oncall-agent/
 │   ├── mcp_client/            connections (one, several, or a gateway), LangChain adapter, MCP names
 │   └── tests/                 unit + integration/ (real HTTP, real MCP server process)
 ├── mcp-platform/              the tool side of MCP
-│   ├── server/                one codebase, run as the k8s and the prometheus MCP server (MCP_TOOLSETS)
-│   │   ├── server.py, config.py, constants.py, tool_helpers.py, fake_incident.py
-│   │   ├── k8s/               Kubernetes tools, write tools, runbook resources, backends, fakes
-│   │   ├── prometheus/        metric tools, PromQL, backends, fakes
+│   ├── server/                one codebase, two MCP servers
+│   │   ├── base_server.py     what both share: token check, audit and role middleware, /health
+│   │   ├── config.py, constants.py, tool_definitions.py, fake_incident.py
+│   │   ├── k8s/               server.py (python -m k8s.server), tools, write tools, runbooks, backends
+│   │   ├── prometheus/        server.py (python -m prometheus.server), metric tools, PromQL, backends
 │   │   ├── access/            tokens, roles, four eyes, audit log
 │   │   ├── knowledge/         runbooks/<service>.md, topology/<namespace>.json
 │   │   ├── deploy/            the server's ServiceAccounts and RBAC (applied with the lab)
 │   │   └── tests/             k8s/, prometheus/, shared; integration/ (live kind cluster)
-│   └── gateway/               agentgateway.yaml; bin/ (downloaded binary, ignored)
+│   └── gateway/               agentgateway.yaml: the only way to the MCP servers; bin/ (ignored)
 ├── lab/                       the fake production the agent investigates
 │   ├── services/              user-, payment-, order-service (FastAPI), each with Dockerfile and tests
 │   └── kubernetes/            kind-cluster.yaml; base/ (one folder per workload, ns shop),
 │                              incidents/ (one Kustomize overlay per incident), monitoring/ (Prometheus)
 ├── evals/                     incident eval: incident_cases.py, run_eval.py, replay.py, experiment_tracking.py
 ├── docs/                      architecture, lab, evals, observability, MCP features, security (see below)
-├── compose.yaml               AI server + both MCP servers (fake data);
-│                              overlays: compose.kind.yaml (kind cluster), compose.gateway.yaml (gateway + tokens)
+├── compose.yaml               AI server, gateway, both MCP servers (fake data);
+│                              compose.kind.yaml switches the MCP servers to the kind cluster
 ├── keys/                      MCP token key pair from `make mcp-keys` (ignored)
 ├── Makefile                   every command: make help
 ├── ruff.toml                  lint rules; each Python project's pyproject.toml extends them
@@ -91,9 +92,9 @@ Everything runs through the `Makefile`; `make help` lists the targets:
 | Command | What it does |
 | --- | --- |
 | `make setup` | Virtualenv + dependencies for each app, creates `ai-server/.env` and `mcp-platform/server/.env` |
-| `make run-mcp-server` / `make run-ai-server` | Run the apps locally (no Docker) |
-| `make up` / `make down` / `make logs` | AI server + MCP server in Docker Compose (fake cluster data) |
-| `make up-kind` | Same, but the MCP server reads the kind cluster |
+| `make run-mcp-servers` / `make run-gateway` / `make run-ai-server` | Run the apps locally (no Docker) |
+| `make up` / `make down` / `make logs` | The whole system in Docker Compose: AI server, gateway, both MCP servers (fake data) |
+| `make up-kind` | Same, but the MCP servers read the kind cluster |
 | `make test` | Every test suite (cluster tests run only if the kind cluster is up) |
 | `make lint` | Ruff over the whole repository (rules in `ruff.toml`); CI runs it and the tests on every push |
 | `make cluster-up` / `make smoke-test` / `make cluster-down` | Kind cluster with the sample services |
@@ -118,44 +119,47 @@ PATH. For example, add this to `~/.bashrc`:
 
 ## Run with Docker
 
-Needs Docker Desktop running and `ai-server/.env` created (see above). Then
-`make up`. It builds both images and waits until they're healthy.
+Needs Docker Desktop running and the `.env` files created (`make setup`). Then `make up`
+(fake cluster data) or `make up-kind` (the kind cluster). It creates the token keys if
+needed, builds the images and waits until everything is healthy.
 
-- Both services run on the Compose network. The AI server reaches the
-  MCP server at `http://mcp-server:9000/mcp`.
-- Ports are published on `127.0.0.1` only: AI server `8000`, MCP server `9000`
-  (for the Inspector). To change them, copy `.env.example` in the repo root to
-  `.env` and edit it.
-- Images run as a non-root user and contain no `.env`, tests or dev
-  dependencies. The API key is passed in at runtime from `ai-server/.env`.
-- Inside Docker the MCP server listens on `0.0.0.0`, so DNS-rebinding protection
-  is enabled explicitly with `MCP_ALLOWED_HOSTS`.
+- Four containers: AI server → **MCP gateway** → the Kubernetes and the Prometheus MCP
+  server. The gateway is the only way to the MCP servers: it checks every token and which
+  tools a token may reach.
+- Ports are published on `127.0.0.1` only: AI server `8000`, gateway `3000`. The MCP
+  servers aren't published. To change the ports, copy `.env.example` in the repo root to
+  `.env`.
+- Images run as a non-root user and contain no `.env`, tests or dev dependencies. Keys
+  and API keys are passed in at runtime.
+- Inside Docker the MCP servers listen on `0.0.0.0`, so DNS-rebinding protection is
+  enabled explicitly with `MCP_ALLOWED_HOSTS`.
 
 ## Run locally (without Docker)
 
 ```bash
-make run-mcp-server   # terminal 1: http://127.0.0.1:9000/mcp (or run-mcp-servers: two servers)
-make run-ai-server    # terminal 2: http://127.0.0.1:8000 (Swagger UI at /docs)
+make run-mcp-servers  # terminal 1: Kubernetes MCP server :9000, Prometheus MCP server :9001
+make run-gateway      # terminal 2: agentgateway :3000 (downloads the binary once, checks its SHA-256)
+make run-ai-server    # terminal 3: http://127.0.0.1:8000 (Swagger UI at /docs)
 ```
 
 | Endpoint | What it does |
 | --- | --- |
 | `GET /health` | Liveness check for the AI server only |
-| `GET /ready` | Confirms the MCP server is reachable (runs `tools/list`) |
-| `GET /tools` | Lists the tools the MCP server advertises, write tools included |
+| `GET /ready` | Confirms the MCP servers are reachable through the gateway (runs `tools/list`) |
+| `GET /tools` | Lists the tools the MCP servers offer, write tools included |
 | `POST /investigate` | `{"question": "..."}` → structured incident report, Markdown version, every check that ran, graph steps |
 | `POST /investigate/stream` | Same investigation, streamed live as Server-Sent Events (see [Observability](./docs/observability.md#live-progress-phase-15)) |
 
 With `API_KEYS` set, every endpoint except `/health` and `/ready` needs an
 `X-API-Key` header (see [sign-in and roles](./docs/actions-and-security.md)).
 
-Errors: MCP server unreachable → `503`; LLM provider failure → `502` (details go
+Errors: MCP gateway unreachable → `503`; LLM provider failure → `502` (details go
 to the server log only). The table is in `ai-server/errors.py`, shared by both
 investigate endpoints.
 
 To call MCP tools by hand, open the [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
-with `npx @modelcontextprotocol/inspector` and connect with Streamable HTTP to
-`http://127.0.0.1:9000/mcp` (with `MCP_AUTH_JWKS_PATH` set it needs a bearer token).
+with `npx @modelcontextprotocol/inspector` and connect with Streamable HTTP to the gateway,
+`http://127.0.0.1:3000/mcp`, with a bearer token signed by `keys/mcp-token-private.pem`.
 
 ## Test
 

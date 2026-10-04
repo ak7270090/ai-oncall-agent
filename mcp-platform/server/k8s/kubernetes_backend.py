@@ -9,8 +9,8 @@ from kubernetes.client.rest import ApiException
 from kubernetes.config.config_exception import ConfigException
 from urllib3.exceptions import HTTPError as TransportError
 
-from constants import REVISION_ANNOTATION, WARNING_EVENT_TYPE
 from k8s.backend import ClusterError, no_previous_container_error, not_found_error
+from k8s.constants import REVISION_ANNOTATION, WARNING_EVENT_TYPE
 from k8s.models import (
     ClusterEvent,
     Condition,
