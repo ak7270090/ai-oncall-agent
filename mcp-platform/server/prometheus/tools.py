@@ -5,8 +5,8 @@ import anyio
 from mcp.server.mcpserver import Context
 from pydantic import Field
 
-from config import Settings
 from constants import NAME_PATTERN
+from prometheus.config import PrometheusServerSettings
 from prometheus.constants import (
     DEFAULT_HISTORY_MINUTES,
     MAX_HISTORY_MINUTES,
@@ -20,7 +20,7 @@ from prometheus.models import MetricSeries, ServiceOverview
 from tool_definitions import READ_ONLY_TOOL, ToolDefinition, namespace_guard
 
 
-def build_prometheus_tools(reader: MetricsReader, settings: Settings) -> list[ToolDefinition]:
+def build_prometheus_tools(reader: MetricsReader, settings: PrometheusServerSettings) -> list[ToolDefinition]:
     Namespace, require_allowed = namespace_guard(settings)
     ServiceName = Annotated[str, Field(pattern=NAME_PATTERN, description="Service name, e.g. payment-service")]
 

@@ -1,16 +1,18 @@
 """Answers "who changed what, and who approved it?" from the audit log.
 
-    python -m access.audit_report                      # changes and refusals, newest last
-    python -m access.audit_report --deployment payment-service --since-hours 24
-    python -m access.audit_report --all                # read-only tool calls too"""
+    python -m audit.report                      # changes and refusals, newest last (make audit)
+    python -m audit.report --deployment payment-service --since-hours 24
+    python -m audit.report --all                # read-only tool calls too"""
 
 import argparse
 from datetime import datetime, timedelta, timezone
 
-from access.audit_log import AuditLog
-from access.constants import AuditEvent
-from config import get_settings
+from audit.config import AuditSettings
+from audit.constants import AuditEvent
+from audit.log import AuditLog
+from k8s.config import KubernetesSettings
 from k8s.constants import WRITE_TOOLS
+from prometheus.config import PrometheusSettings
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -53,10 +55,11 @@ def describe(record: dict, trace_url_template: str | None) -> str:
 
 
 def main() -> None:
-    options, settings = parse_arguments(), get_settings()
-    logs = (settings.k8s_server.audit_log_path, settings.prometheus_server.audit_log_path)
+    options = parse_arguments()
+    logs = (KubernetesSettings().k8s_server.audit_log_path, PrometheusSettings().prometheus_server.audit_log_path)
     records = sorted((r for path in logs for r in AuditLog(path).read() if is_selected(r, options)), key=lambda r: r["time"])
-    print("\n".join(describe(r, settings.trace_url_template) for r in records) or "No matching audit records.")
+    trace_url_template = AuditSettings().trace_url_template
+    print("\n".join(describe(r, trace_url_template) for r in records) or "No matching audit records.")
 
 
 if __name__ == "__main__":

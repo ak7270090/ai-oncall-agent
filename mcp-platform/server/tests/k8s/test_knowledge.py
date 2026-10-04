@@ -5,19 +5,20 @@ from mcp import Client
 from mcp.shared.exceptions import MCPError
 from mcp_types import ResourceTemplateReference
 
-from config import Settings
+from k8s.config import K8sServerSettings
 from k8s.server import build_k8s_server
+from prometheus.config import PrometheusServerSettings
 from prometheus.server import build_prometheus_server
 
 pytestmark = pytest.mark.anyio
 READ_ONLY_TOOLS = {"list_pods", "get_pod_status", "get_pod_logs", "list_deployments", "get_deployment",
                    "list_events", "get_service_overview", "get_metrics"}
-SETTINGS = Settings(_env_file=None, backend="fake")
+SETTINGS = K8sServerSettings(_env_file=None, backend="fake")
 
 
 @pytest.fixture
 async def client():
-    async with Client(build_k8s_server(Settings(_env_file=None, backend="fake"))) as mcp_client:
+    async with Client(build_k8s_server(K8sServerSettings(_env_file=None, backend="fake"))) as mcp_client:
         yield mcp_client
 
 
@@ -72,7 +73,8 @@ async def test_resource_arguments_are_completed(client, template, argument, type
 
 async def test_every_tool_is_annotated_read_only():
     tools = []
-    for server in (build_k8s_server(SETTINGS), build_prometheus_server(SETTINGS)):
+    for server in (build_k8s_server(SETTINGS),
+                   build_prometheus_server(PrometheusServerSettings(_env_file=None, backend="fake"))):
         async with Client(server) as mcp_client:
             tools += (await mcp_client.list_tools()).tools
     assert {t.name for t in tools} == READ_ONLY_TOOLS

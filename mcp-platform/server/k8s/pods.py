@@ -25,8 +25,8 @@ from mcp_types import (
 )
 from pydantic import Field
 
-from config import Settings
 from k8s.cluster.access import ClusterReader
+from k8s.config import K8sServerSettings
 from k8s.constants import (
     DEFAULT_LOG_LINES,
     LOG_LINES_KEPT_WITH_SUMMARY,
@@ -85,7 +85,7 @@ def client_can_sample(ctx: Context) -> bool:
 
 
 def build_log_summary_request(pod: str, namespace: str, previous: bool, log_lines: list[str],
-                              settings: Settings) -> Sample:
+                              settings: K8sServerSettings) -> Sample:
     which = "previous (crashed) container" if previous else "current container"
     text = f"Logs of pod {pod} in namespace {namespace}, {which}, oldest first:\n" + "\n".join(log_lines)
     return Sample(
@@ -102,7 +102,7 @@ def summary_text(result: CreateMessageResult) -> str:
     return "\n".join(block.text for block in blocks if isinstance(block, TextContent)).strip()
 
 
-def build_pod_tools(reader: ClusterReader, settings: Settings) -> list[ToolDefinition]:
+def build_pod_tools(reader: ClusterReader, settings: K8sServerSettings) -> list[ToolDefinition]:
     Namespace, require_allowed = namespace_guard(settings)
     recent_logs = RecentLogs(reader, settings.log_cache_seconds)
 

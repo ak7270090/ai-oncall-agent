@@ -24,9 +24,9 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.mcpserver.resolve import Elicit, Resolve
 from pydantic import BaseModel, Field
 
-from access.policy import AccessPolicy, get_caller
-from config import Settings
+from auth.roles import AccessPolicy, get_caller
 from k8s.cluster.access import ClusterReader, ClusterWriter
+from k8s.config import K8sServerSettings
 from k8s.constants import Operation
 from k8s.models import DeploymentDetail, DeploymentList, OperationResult
 from tool_definitions import READ_ONLY_TOOL, ToolDefinition, change_tool, namespace_guard
@@ -38,7 +38,7 @@ class Approval(BaseModel):
     approver: str = Field(min_length=1, description="Your user name (the AI server fills in the signed-in user)")
 
 
-def build_deployment_tools(reader: ClusterReader, writer: ClusterWriter | None, settings: Settings,
+def build_deployment_tools(reader: ClusterReader, writer: ClusterWriter | None, settings: K8sServerSettings,
                            policy: AccessPolicy | None = None) -> list[ToolDefinition]:
     """Read tools always; change tools when a `writer` is given. With a `policy`
     (authentication on) approvers are checked too."""

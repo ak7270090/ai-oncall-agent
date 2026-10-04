@@ -177,7 +177,7 @@ replay:
 	cd ai-server && .venv/$(VENV_BIN)/python ../evals/replay.py $(if $(RUN),--run ../$(RUN)) $(if $(NAME),--only $(NAME)) $(if $(TIMES),--times $(TIMES))
 
 audit:
-	cd mcp-platform/server && .venv/$(VENV_BIN)/python -m access.audit_report $(if $(DEPLOYMENT),--deployment $(DEPLOYMENT)) $(if $(SINCE),--since-hours $(SINCE)) $(if $(ALL),--all)
+	cd mcp-platform/server && .venv/$(VENV_BIN)/python -m audit.report $(if $(DEPLOYMENT),--deployment $(DEPLOYMENT)) $(if $(SINCE),--since-hours $(SINCE)) $(if $(ALL),--all)
 
 new-secret:
 	@$(PYTHON) -c "import secrets; print(secrets.token_urlsafe(32))"

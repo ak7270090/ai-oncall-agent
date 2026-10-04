@@ -3,7 +3,7 @@
 import pytest
 from mcp import Client
 
-from config import Settings
+from prometheus.config import PrometheusServerSettings
 from prometheus.server import build_prometheus_server
 
 PROMETHEUS_TOOLS = {"get_service_overview", "get_metrics"}
@@ -11,8 +11,8 @@ PROMETHEUS_TOOLS = {"get_service_overview", "get_metrics"}
 pytestmark = pytest.mark.anyio
 
 
-def fake_settings(**overrides) -> Settings:
-    return Settings(_env_file=None, backend="fake", **overrides)
+def fake_settings(**overrides) -> PrometheusServerSettings:
+    return PrometheusServerSettings(_env_file=None, backend="fake", **overrides)
 
 
 async def call(client, tool: str, arguments: dict | None = None) -> dict:
@@ -40,8 +40,7 @@ async def test_serves_only_metric_tools_and_no_resources(client):
 
 
 async def test_needs_no_kubernetes_credentials():
-    settings = Settings(_env_file=None, backend="kubernetes", kubeconfig_path="no/such/kubeconfig",
-                        operator_kubeconfig_path="no/such/kubeconfig")
+    settings = PrometheusServerSettings(_env_file=None, backend="kubernetes")
     async with Client(build_prometheus_server(settings)) as mcp_client:
         names = {t.name for t in (await mcp_client.list_tools()).tools}
     assert names == PROMETHEUS_TOOLS

@@ -6,11 +6,11 @@ import pytest
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
-from config import Settings
 from k8s.cluster.access import ClusterError
 from k8s.cluster.kubernetes_api import KubernetesReader
+from k8s.config import K8sServerSettings
 
-SETTINGS = Settings(_env_file=None)
+SETTINGS = K8sServerSettings(_env_file=None)
 NAMESPACE = SETTINGS.default_namespace
 SAMPLE_APPS = {"user-service", "payment-service", "order-service"}
 

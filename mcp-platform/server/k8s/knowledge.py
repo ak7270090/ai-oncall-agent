@@ -25,9 +25,9 @@ from mcp_types import (
     ResourceTemplateReference,
 )
 
-from config import Settings
 from constants import NAME_PATTERN
 from k8s.cluster.access import ClusterError, ClusterReader
+from k8s.config import K8sServerSettings
 from k8s.constants import DEPLOYMENT_SPEC_URI, RUNBOOK_URI, TOPOLOGY_URI
 
 
@@ -46,11 +46,11 @@ def _require_name(value: str, what: str) -> None:
         raise ResourceError(f"Invalid {what} '{value}'")
 
 
-def runbook_services(settings: Settings) -> list[str]:
+def runbook_services(settings: K8sServerSettings) -> list[str]:
     return sorted(path.stem for path in (settings.knowledge_dir / "runbooks").glob("*.md"))
 
 
-def build_resources(reader: ClusterReader, settings: Settings) -> list[ResourceDefinition]:
+def build_resources(reader: ClusterReader, settings: K8sServerSettings) -> list[ResourceDefinition]:
     def require_allowed(namespace: str) -> None:
         if namespace not in settings.allowed_namespaces:
             raise ResourceError(f"Namespace '{namespace}' is not allowed. Allowed: {', '.join(settings.allowed_namespaces)}")
@@ -85,7 +85,7 @@ def build_resources(reader: ClusterReader, settings: Settings) -> list[ResourceD
     ]
 
 
-def build_completion_handler(reader: ClusterReader, settings: Settings):
+def build_completion_handler(reader: ClusterReader, settings: K8sServerSettings):
     def candidates(template: str, argument: str, context: dict[str, str]) -> list[str]:
         if argument == "namespace" and template in (TOPOLOGY_URI, DEPLOYMENT_SPEC_URI):
             return settings.allowed_namespaces

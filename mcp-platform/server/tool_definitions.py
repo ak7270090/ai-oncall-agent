@@ -6,7 +6,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 from pydantic import Field
 
-from config import Settings
+from config import ServerSettings
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ def change_tool(idempotent: bool) -> ToolAnnotations:
                            open_world_hint=True)
 
 
-def namespace_guard(settings: Settings) -> tuple[Any, Callable[[str], None]]:
+def namespace_guard(settings: ServerSettings) -> tuple[Any, Callable[[str], None]]:
     """Annotated type for a `namespace` tool argument plus the allowlist check."""
     allowed = ", ".join(settings.allowed_namespaces)
     namespace_type = Annotated[str, Field(description=f"Kubernetes namespace (allowed: {allowed})")]

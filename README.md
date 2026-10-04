@@ -43,13 +43,14 @@ ai-oncall-agent/
 ├── mcp-platform/              the tool side of MCP
 │   ├── server/                one codebase, two MCP servers
 │   │   ├── base_server.py     what both share: token check, audit and role middleware, /health
-│   │   ├── config.py, constants.py, tool_definitions.py, fake_incident.py
+│   │   ├── config.py (shared settings), constants.py, tool_definitions.py
 │   │   ├── k8s/               server.py (python -m k8s.server); tools by object: pods.py (incl. log
 │   │   │                      summaries), deployments.py (incl. approved changes), events.py;
 │   │   │                      knowledge.py (runbook resources); cluster/ (access.py, kubernetes_api.py, fake.py)
 │   │   ├── prometheus/        server.py (python -m prometheus.server); tools.py; metrics/ (access.py,
 │   │   │                      prometheus_api.py, queries.py, fake.py)
-│   │   ├── access/            tokens, roles, four eyes, audit log
+│   │   ├── auth/              tokens.py (token check), roles.py (roles, four eyes, their middleware)
+│   │   ├── audit/             log.py, middleware.py (records every call), report.py (make audit)
 │   │   ├── knowledge/         runbooks/<service>.md, topology/<namespace>.json
 │   │   ├── deploy/            the server's ServiceAccounts and RBAC (applied with the lab)
 │   │   └── tests/             k8s/, prometheus/, shared; integration/ (live kind cluster)

@@ -8,7 +8,9 @@ message.
 
 - Every value that could differ between environments (URLs, ports, model names,
   timeouts, retry counts, limits) lives in the app's settings module
-  (`config.py`, or `settings.py` for the single-file sample services),
+  (`config.py`, or `settings.py` for the single-file sample services; the MCP server
+  splits it by domain: `k8s/config.py`, `prometheus/config.py`, `auth/config.py`, with the
+  same `MCP_*` variable names),
   built with `pydantic-settings` and overridable with an environment variable
   or `.env`.
 - Automation values are variables at the top of the `Makefile` (`?=`, so
@@ -75,12 +77,15 @@ message.
   for the Dockerfiles.
 - The README says what the project is and how to run it; feature explanations go in
   `docs/<topic>.md`.
+- Organize by **concern**, never by mechanism: two middlewares for two concerns (roles,
+  audit) live with their concern (`auth/roles.py`, `audit/middleware.py`), not together in a
+  `middleware.py`.
 - Organize by **domain**, not by file type. A domain folder holds everything about one
   feature, in files with fixed names: `router.py` (HTTP routes), `schemas.py` (request
   and response models), `dependencies.py` (FastAPI dependencies), `constants.py`,
   `service.py` (the entry point of its logic), plus modules named after their job.
   ai-server: `investigation/`, `actions/`, `auth/`, `llm/`, `mcp_client/`; mcp-server:
-  `k8s/`, `prometheus/`, `access/`.
+  `k8s/`, `prometheus/`, `auth/`, `audit/`.
 - Flat is better than nested: something that is one module stays a module
   (`config.py`, `tracing.py`, `health.py`, `errors.py`); a folder needs at least two
   modules that belong together. Split a domain into subfolders only when it has
@@ -95,8 +100,7 @@ message.
   `create_chat_model`, `build_investigation_graph`) so tests can build their own.
 - Group the MCP server by tool set, not by layer: `k8s/` and `prometheus/` each hold
   their tools, backends, models and fakes; only what both use is shared
-  (`base_server.py`, `tool_definitions.py`, `access/`, `config.py`, `constants.py`,
-  `fake_incident.py`). Each MCP server has its own entry point (`k8s/server.py`,
+  (`base_server.py`, `tool_definitions.py`, `auth/`, `audit/`, `config.py`, `constants.py`). Each MCP server has its own entry point (`k8s/server.py`,
   `prometheus/server.py`); no setting decides what a process is.
   Each tool module returns its tool definitions, and its server registers them.
 - Before writing a helper, check whether one already exists. Extend it rather
@@ -133,8 +137,8 @@ message.
   are named after what they contain.
 - Keep fake implementations out of the real ones' files: each `MCP_BACKEND=fake` backend
   sits in its own module next to the real one it replaces (`k8s/cluster/fake.py`,
-  `prometheus/metrics/fake.py`), and the canned incident both serve is
-  `fake_incident.py`. Test-only fakes stay in `tests/` (`tests/fakes.py`).
+  `prometheus/metrics/fake.py`), each with its own canned data, so the two servers share
+  no domain code. Test-only fakes stay in `tests/` (`tests/fakes.py`).
 - Small pure functions go in a module named after what they do
   (`investigation/evidence/analysis.py`: the rules that read evidence). `helpers.py`
   only for a few small functions with no better common name (`prometheus/helpers.py`).

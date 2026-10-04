@@ -5,11 +5,11 @@ import time
 
 import pytest
 
-from config import Settings
+from prometheus.config import PrometheusServerSettings
 from prometheus.metrics.access import MetricsError
 from prometheus.metrics.prometheus_api import PrometheusReader
 
-SETTINGS = Settings(_env_file=None)
+SETTINGS = PrometheusServerSettings(_env_file=None)
 NAMESPACE = SETTINGS.default_namespace
 SAMPLE_SERVICES = {"user-service", "payment-service", "order-service"}
 DATA_WAIT_SECONDS = 120

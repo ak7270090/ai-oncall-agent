@@ -35,7 +35,7 @@ User ──► ai-server (FastAPI + LangGraph + LLM + MCP client)   evals/ (make
 
 | Phase | What was built | Where it lives |
 | --- | --- | --- |
-| 1 | MCP server with fake tools | `mcp-platform/server/k8s/server.py`, `mcp-platform/server/fake_incident.py`, `k8s/fake_*.py` |
+| 1 | MCP server with fake tools | `mcp-platform/server/k8s/server.py`, `k8s/cluster/fake.py`, `prometheus/metrics/fake.py` |
 | 2 | AI server + MCP client | `ai-server/main.py`, `ai-server/mcp_client/` |
 | 3 | Streamable HTTP between the two apps | `mcp_client/connection.py`, `MCP_GATEWAY_URL` |
 | 4 | Docker | each app's `Dockerfile`, `compose.yaml` (`make up`) |

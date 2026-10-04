@@ -3,12 +3,12 @@
 from starlette.testclient import TestClient
 
 from base_server import build_transport_security
-from config import Settings
+from prometheus.config import PrometheusServerSettings
 from prometheus.server import build_prometheus_server
 
 
-def fake_settings(**overrides) -> Settings:
-    return Settings(_env_file=None, backend="fake", **overrides)
+def fake_settings(**overrides) -> PrometheusServerSettings:
+    return PrometheusServerSettings(_env_file=None, backend="fake", **overrides)
 
 
 def test_health_route():

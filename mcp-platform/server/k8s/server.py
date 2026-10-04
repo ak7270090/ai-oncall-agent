@@ -2,12 +2,12 @@
 
 from mcp.server.mcpserver import MCPServer
 
-from access.policy import build_access_policy
+from auth.roles import build_access_policy
 from base_server import add_tools, build_mcp_server, run_mcp_server
-from config import Settings, get_settings
 from k8s.cluster.access import ClusterReader, ClusterWriter
 from k8s.cluster.fake import FakeClusterReader, FakeClusterWriter
 from k8s.cluster.kubernetes_api import KubernetesReader, KubernetesWriter
+from k8s.config import K8sServerSettings, get_k8s_settings
 from k8s.constants import WRITE_TOOLS
 from k8s.deployments import build_deployment_tools
 from k8s.events import build_event_tools
@@ -15,19 +15,19 @@ from k8s.knowledge import build_completion_handler, build_resources
 from k8s.pods import build_pod_tools
 
 
-def create_reader(settings: Settings) -> ClusterReader:
+def create_reader(settings: K8sServerSettings) -> ClusterReader:
     if settings.backend == "fake":
         return FakeClusterReader()
     return KubernetesReader(settings.kubeconfig_path, settings.kube_request_timeout_seconds)
 
 
-def create_writer(settings: Settings) -> ClusterWriter:
+def create_writer(settings: K8sServerSettings) -> ClusterWriter:
     if settings.backend == "fake":
         return FakeClusterWriter()
     return KubernetesWriter(settings.operator_kubeconfig_path, settings.kube_request_timeout_seconds)
 
 
-def build_k8s_server(settings: Settings, reader: ClusterReader | None = None,
+def build_k8s_server(settings: K8sServerSettings, reader: ClusterReader | None = None,
                      writer: ClusterWriter | None = None) -> MCPServer:
     """Pod, deployment and event tools (changes only with MCP_ENABLE_WRITE_TOOLS), the
     team's knowledge as resources, and completions for them."""
@@ -49,7 +49,7 @@ def build_k8s_server(settings: Settings, reader: ClusterReader | None = None,
 
 
 def main() -> None:
-    settings = get_settings()
+    settings = get_k8s_settings()
     run_mcp_server(build_k8s_server(settings), settings, settings.k8s_server)
 
 

@@ -1,19 +1,25 @@
 """Who may call and approve which tool (Phase 20).
 
 Kubernetes RBAC limits what the MCP server's ServiceAccounts may do; it can't tell
-which person asked. This policy can: every known user has a role, every role may call
-the read-only tools, and each role lists the write tools it may call (and approve).
-An approval must come from someone other than the requester (four eyes).
+which person asked. Roles can: every known user has a role, every role may call the
+read-only tools, and each role lists the write tools it may call (and approve). An
+approval must come from someone other than the requester (four eyes).
 
-Which tools a token's scope may reach is the gateway's job (Phase 22); this policy
-decides by person and role only."""
+Which tools a token's scope may reach is the gateway's job (Phase 22); roles decide by
+person only. AuthorizationMiddleware enforces them before a tool runs."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from mcp.server.auth.middleware.auth_context import get_access_token
+from mcp.server.context import HandlerResult
+from mcp.shared.exceptions import MCPError
 
-from access.constants import ANONYMOUS_USER
-from config import Settings
+from auth.config import AccessSettings
+from auth.constants import ACCESS_DENIED_ERROR_CODE, ANONYMOUS_USER
+
+CALL_TOOL = "tools/call"
 
 
 @dataclass(frozen=True)
@@ -56,8 +62,24 @@ class AccessPolicy:
         return None
 
 
-def build_access_policy(settings: Settings, write_tools: frozenset[str]) -> AccessPolicy | None:
+def build_access_policy(settings: AccessSettings, write_tools: frozenset[str]) -> AccessPolicy | None:
     """The roles policy, or None while authentication is off (no person to check)."""
     if not settings.auth_jwks_path:
         return None
     return AccessPolicy(settings.user_roles, settings.role_write_tools, write_tools)
+
+
+class AuthorizationMiddleware:
+    """Server middleware (MCPServer(middleware=[…])): refuses tool calls the caller's role
+    doesn't allow, before the SDK even validates the request."""
+
+    def __init__(self, policy: AccessPolicy):
+        self._policy = policy
+
+    async def __call__(self, ctx: Any, call_next: Any) -> HandlerResult:
+        if ctx.method == CALL_TOOL:
+            params = ctx.params if isinstance(ctx.params, Mapping) else {}
+            refusal = self._policy.refusal_for_call(get_caller(), params.get("name"))
+            if refusal:
+                raise MCPError(code=ACCESS_DENIED_ERROR_CODE, message=f"Access denied: {refusal}")
+        return await call_next(ctx)

@@ -14,8 +14,8 @@ import jwt
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 
-from access.constants import TOKEN_ALGORITHM, TOKEN_REQUIRED_CLAIMS, Scope
-from config import Settings
+from auth.config import AccessSettings
+from auth.constants import TOKEN_ALGORITHM, TOKEN_REQUIRED_CLAIMS, Scope
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class SignedTokenVerifier:
                            claims=claims)
 
 
-def build_token_auth(settings: Settings, public_url: str) -> dict:
+def build_token_auth(settings: AccessSettings, public_url: str) -> dict:
     """MCPServer arguments for bearer-token authentication: every HTTP request needs a
     valid token with scope k8s:read, else 401 pointing to the protected resource metadata
     (/.well-known/oauth-protected-resource/mcp). Empty without MCP_AUTH_JWKS_PATH."""

@@ -1,5 +1,6 @@
-"""Phases 19-20 over real HTTP (in-process ASGI): bearer tokens, scopes, roles, four
-eyes and the audit log."""
+"""The security stack every MCP server gets from base_server.py, over real HTTP (in-process
+ASGI) with the Kubernetes server: bearer tokens (auth/tokens.py), roles and four eyes
+(auth/roles.py), and the audit log (audit/). Scopes are the gateway's job, not tested here."""
 
 import json
 import time
@@ -15,10 +16,10 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import MCPError
 from mcp_types import ElicitResult
 
-from access.audit_log import AuditLog
-from access.constants import ACCESS_DENIED_ERROR_CODE, Scope
-from config import Settings
+from audit.log import AuditLog
+from auth.constants import ACCESS_DENIED_ERROR_CODE, Scope
 from k8s.cluster.fake import FakeClusterWriter
+from k8s.config import K8sServerSettings
 from k8s.server import build_k8s_server
 
 pytestmark = pytest.mark.anyio
@@ -60,7 +61,7 @@ def operations():
 @pytest.fixture
 def server(operations, tmp_path):
     write_jwks(tmp_path / "jwks.json")
-    server = build_k8s_server(Settings(_env_file=None, backend="fake", enable_write_tools=True,
+    server = build_k8s_server(K8sServerSettings(_env_file=None, backend="fake", enable_write_tools=True,
                                     auth_jwks_path=tmp_path / "jwks.json", user_roles=ROLES), writer=operations)
     return server, server.streamable_http_app()
 

@@ -3,7 +3,7 @@
 import pytest
 from mcp import Client
 
-from config import Settings
+from k8s.config import K8sServerSettings
 from k8s.constants import WRITE_TOOLS
 from k8s.server import build_k8s_server
 
@@ -13,8 +13,8 @@ CRASHING_POD = "payment-service-7d9f8c6b5-2xkqp"
 pytestmark = pytest.mark.anyio
 
 
-def fake_settings(**overrides) -> Settings:
-    return Settings(_env_file=None, backend="fake", **overrides)
+def fake_settings(**overrides) -> K8sServerSettings:
+    return K8sServerSettings(_env_file=None, backend="fake", **overrides)
 
 
 async def call(client, tool: str, arguments: dict | None = None) -> dict:
@@ -37,7 +37,7 @@ async def client():
 
 @pytest.mark.parametrize("backend", ["fake", "kubernetes"])
 async def test_both_backends_offer_the_same_tools(backend):
-    async with Client(build_k8s_server(Settings(_env_file=None, backend=backend))) as mcp_client:
+    async with Client(build_k8s_server(K8sServerSettings(_env_file=None, backend=backend))) as mcp_client:
         names = {t.name for t in (await mcp_client.list_tools()).tools}
     assert names == KUBERNETES_TOOLS
 

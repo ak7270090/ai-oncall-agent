@@ -7,16 +7,22 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from access.audit_log import AuditLog
-from access.middleware import AuditMiddleware, AuthorizationMiddleware
-from access.policy import AccessPolicy
-from access.tokens import build_token_auth
-from config import ServerIdentity, Settings
+from audit.log import AuditLog
+from audit.middleware import AuditMiddleware
+from auth.config import AccessSettings
+from auth.roles import AccessPolicy, AuthorizationMiddleware
+from auth.tokens import build_token_auth
+from config import ServerIdentity, ServerSettings
 from constants import HEALTH_STATUS_OK
 from tool_definitions import ToolDefinition
 
 
-def build_mcp_server(settings: Settings, identity: ServerIdentity, policy: AccessPolicy | None,
+class BaseServerSettings(ServerSettings, AccessSettings):
+    """What every MCP server reads: the shared settings and authentication. Each server
+    adds its own (k8s/config.py, prometheus/config.py)."""
+
+
+def build_mcp_server(settings: BaseServerSettings, identity: ServerIdentity, policy: AccessPolicy | None,
                      write_tools: frozenset[str] = frozenset()) -> MCPServer:
     """An MCP server without tools: every call is audited; with authentication on, every
     request needs a valid token and every tool call a role that allows it."""
@@ -38,13 +44,13 @@ def add_tools(server: MCPServer, tools: list[ToolDefinition]) -> None:
         server.add_tool(tool.function, annotations=tool.annotations)
 
 
-def build_transport_security(settings: Settings) -> TransportSecuritySettings | None:
+def build_transport_security(settings: ServerSettings) -> TransportSecuritySettings | None:
     if not settings.allowed_hosts:
         return None
     return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=settings.allowed_hosts)
 
 
-def run_mcp_server(server: MCPServer, settings: Settings, identity: ServerIdentity) -> None:
+def run_mcp_server(server: MCPServer, settings: ServerSettings, identity: ServerIdentity) -> None:
     if settings.transport == "stdio":
         server.run(transport="stdio")
         return

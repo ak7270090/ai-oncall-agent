@@ -65,14 +65,14 @@ person --X-API-Key--> AI server --Bearer JWT (sub=aman, client_id=oncall-ai-serv
   the AI server mints a short-lived JWT for the signed-in person, signed with its
   private key (`MCP_TOKEN_PRIVATE_KEY_PATH`; RS256 since Phase 22, HS256 before) and
   checked with the public JWKS (`MCP_AUTH_JWKS_PATH`, `make mcp-keys`). The MCP server
-  (`MCPServer(token_verifier=…, auth=AuthSettings(…))`, `mcp-platform/server/access/tokens.py`)
+  (`MCPServer(token_verifier=…, auth=AuthSettings(…))`, `mcp-platform/server/auth/tokens.py`)
   answers 401 without a valid one and publishes OAuth protected resource metadata at
   `/.well-known/oauth-protected-resource/mcp`.
 - **Scopes:** investigations get `k8s:read`, so the MCP server doesn't even list the write
   tools to them; `POST /actions` gets `k8s:read k8s:write`.
 - **Roles** (`MCP_USER_ROLES`, `MCP_ROLE_WRITE_TOOLS`): every role may read; `developer`
   no write tools, `oncall` restart and scale, `lead` also roll back. A server middleware
-  (`mcp-platform/server/access/middleware.py`) refuses before the tool runs.
+  (`mcp-platform/server/auth/roles.py`) refuses before the tool runs.
 - **Four eyes:** the person who starts an action can't approve it (403 at the AI server),
   and the MCP server checks again: the approver named in the elicitation answer must be
   someone else whose role may run that tool.

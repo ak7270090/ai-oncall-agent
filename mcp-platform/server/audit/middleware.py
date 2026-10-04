@@ -1,8 +1,7 @@
-"""Server middleware (MCPServer(middleware=[…])): runs around every request before the
-SDK validates it, so a refused tool never runs.
+"""Records every tool call as server middleware (MCPServer(middleware=[…])). Listed first
+(outermost), so it also records calls the role check refuses."""
 
-AuditMiddleware is listed first (outermost) so it also records refusals."""
-
+from collections.abc import Mapping
 from time import monotonic
 from typing import Any
 
@@ -10,27 +9,13 @@ from mcp.server.context import HandlerResult
 from mcp.shared.exceptions import MCPError
 from mcp_types.methods import is_input_required
 
-from access.audit_log import AuditLog
-from access.constants import ACCESS_DENIED_ERROR_CODE, AuditEvent, AuditOutcome
-from access.mcp_messages import extract_questions, extract_trace_id, to_mapping
-from access.policy import AccessPolicy, get_caller
+from audit.constants import ELICITATION_METHOD, TRACEPARENT_KEY, AuditEvent, AuditOutcome
+from audit.log import AuditLog
+from auth.constants import ACCESS_DENIED_ERROR_CODE
+from auth.roles import get_caller
 
 CALL_TOOL = "tools/call"
 OPERATION_AUDIT_FIELDS = ("done", "detail", "approval", "approval_reason", "requested_by", "approved_by")
-
-
-class AuthorizationMiddleware:
-    """Refuses tool calls the caller's role doesn't allow."""
-
-    def __init__(self, policy: AccessPolicy):
-        self._policy = policy
-
-    async def __call__(self, ctx: Any, call_next: Any) -> HandlerResult:
-        if ctx.method == CALL_TOOL:
-            refusal = self._policy.refusal_for_call(get_caller(), to_mapping(ctx.params).get("name"))
-            if refusal:
-                raise MCPError(code=ACCESS_DENIED_ERROR_CODE, message=f"Access denied: {refusal}")
-        return await call_next(ctx)
 
 
 class AuditMiddleware:
@@ -78,6 +63,28 @@ class AuditMiddleware:
                                outcome=AuditOutcome.ERROR if failed else AuditOutcome.OK,
                                **details, duration_ms=_elapsed_ms(started))
         return result
+
+
+def to_mapping(value: Any) -> Mapping[str, Any]:
+    """Request params and results as the middleware gets them: plain mappings, or models."""
+    if isinstance(value, Mapping):
+        return value
+    return value.model_dump(by_alias=True, exclude_none=True) if hasattr(value, "model_dump") else {}
+
+
+def extract_trace_id(params: Mapping[str, Any]) -> str | None:
+    """Trace id from the W3C traceparent the client put in the request's `_meta`
+    (`00-<trace id>-<span id>-<flags>`), i.e. the caller's Langfuse trace."""
+    traceparent = (params.get("_meta") or {}).get(TRACEPARENT_KEY)
+    parts = traceparent.split("-") if isinstance(traceparent, str) else []
+    return parts[1] if len(parts) == 4 else None
+
+
+def extract_questions(result: Mapping[str, Any]) -> list[str]:
+    """Questions an `input_required` interim result asks the human (approvals); sampling
+    requests to the client's LLM have none."""
+    return [request.get("params", {}).get("message", "") for request in (result.get("inputRequests") or {}).values()
+            if request.get("method") == ELICITATION_METHOD]
 
 
 def _elapsed_ms(started: float) -> int:

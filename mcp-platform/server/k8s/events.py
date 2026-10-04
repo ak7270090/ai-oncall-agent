@@ -4,14 +4,14 @@ from typing import Annotated
 
 from pydantic import Field
 
-from config import Settings
 from k8s.cluster.access import ClusterReader
+from k8s.config import K8sServerSettings
 from k8s.constants import DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT
 from k8s.models import EventList
 from tool_definitions import READ_ONLY_TOOL, ToolDefinition, namespace_guard
 
 
-def build_event_tools(reader: ClusterReader, settings: Settings) -> list[ToolDefinition]:
+def build_event_tools(reader: ClusterReader, settings: K8sServerSettings) -> list[ToolDefinition]:
     Namespace, require_allowed = namespace_guard(settings)
 
     def list_events(
