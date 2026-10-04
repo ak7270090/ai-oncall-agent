@@ -132,9 +132,12 @@ make run-ai-server    # terminal 2: http://127.0.0.1:8000 (Swagger UI at /docs)
 | --- | --- |
 | `GET /health` | Liveness check for the AI server only |
 | `GET /ready` | Confirms the MCP server is reachable (runs `tools/list`) |
-| `GET /tools` | Lists the tools the MCP server advertises |
+| `GET /tools` | Lists the tools the MCP server advertises, write tools included |
 | `POST /investigate` | `{"question": "..."}` → structured incident report, Markdown version, every check that ran, graph steps |
 | `POST /investigate/stream` | Same investigation, streamed live as Server-Sent Events (see "Live progress") |
+
+With `API_KEYS` set, every endpoint except `/health` and `/ready` needs an
+`X-API-Key` header (see "Who may do what").
 
 Errors: MCP server unreachable → `503`; LLM provider failure → `502` (details go
 to the server log only). The table is in `ai-server/api/errors.py`, shared by both
@@ -142,7 +145,7 @@ investigate endpoints.
 
 To call MCP tools by hand, open the [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 with `npx @modelcontextprotocol/inspector` and connect with Streamable HTTP to
-`http://127.0.0.1:9000/mcp`.
+`http://127.0.0.1:9000/mcp` (with `MCP_AUTH_SIGNING_KEY` set it needs a bearer token).
 
 ## Fake production environment (kind)
 
@@ -353,6 +356,59 @@ one full `make eval`.
 **Eval speed.** Prometheus scrapes every 5s and rates use a 30s window, so
 symptoms show up, and clear, within seconds rather than minutes. The eval waits
 20s after a symptom appears (like an alert's `for:`) before asking the agent.
+
+## Who may do what: sign-in, roles and the audit log (Phases 19–20)
+
+Until now anyone who could reach port 9000 could call every tool, and the approval of a
+change was just a click. Now every request says **who** is asking, roles decide **what**
+they may do, and every tool call lands in an **audit log**.
+
+```text
+person --X-API-Key--> AI server --Bearer JWT (sub=aman, client_id=oncall-ai-server,
+                                   scope="k8s:read k8s:write", 60 s)--> MCP server
+                                                                         ├ 401 without a valid token
+                                                                         ├ roles: may aman call this?
+                                                                         └ audit log (who, what, approval, trace)
+```
+
+- **Sign-in to the AI server:** `API_KEYS` maps API keys (`X-API-Key` header) to people.
+  Everything except `/health` and `/ready` needs one. Empty = sign-in off (local dev only).
+- **MCP authentication (OAuth bearer tokens):** for every HTTP request to the MCP server
+  the AI server mints a short-lived JWT for the signed-in person, signed with
+  `MCP_TOKEN_SIGNING_KEY` (= the MCP server's `MCP_AUTH_SIGNING_KEY`). The MCP server
+  (`MCPServer(token_verifier=…, auth=AuthSettings(…))`, `mcp-server/access/tokens.py`)
+  answers 401 without a valid one and publishes OAuth protected resource metadata at
+  `/.well-known/oauth-protected-resource/mcp`.
+- **Scopes:** investigations get `k8s:read`, so the MCP server doesn't even list the write
+  tools to them; `POST /actions` gets `k8s:read k8s:write`.
+- **Roles** (`MCP_USER_ROLES`, `MCP_ROLE_WRITE_TOOLS`): every role may read; `developer`
+  no write tools, `oncall` restart and scale, `lead` also roll back. A server middleware
+  (`mcp-server/access/middleware.py`) refuses before the tool runs.
+- **Four eyes:** the person who starts an action can't approve it (403 at the AI server),
+  and the MCP server checks again: the approver named in the elicitation answer must be
+  someone else whose role may run that tool.
+- **Audit log** (`MCP_AUDIT_LOG_PATH`, JSON lines, append-only): every tool call with
+  person, agent, arguments, outcome, approval (requested by, approved by, reason) and the
+  Langfuse trace id that the MCP client sends in `_meta.traceparent`. Each action is its
+  own Langfuse trace, tagged with the user.
+
+```text
+$ make audit DEPLOYMENT=payment-service SINCE=24
+2026-10-04T06:47:31  ravi via oncall-ai-server: rollback_deployment(name=payment-service, namespace=shop, revision=1)
+    REFUSED: Access denied: role oncall may not call rollback_deployment
+2026-10-04T06:47:35  aman via oncall-ai-server: rollback_deployment(name=payment-service, namespace=shop, revision=1)
+    DONE, approved by neha (v2 breaks payments): Rolled back deployment payment-service to the pod template of revision 1.
+    trace: https://cloud.langfuse.com/project/<project>/traces/939a4752684ff891ec3a3bf20e4008d7
+```
+
+Setup: `make new-secret` for the signing key and each API key; put the key in both
+`.env` files, `API_KEYS` in `ai-server/.env`, `MCP_USER_ROLES` in `mcp-server/.env`;
+`EVAL_API_KEY=<key> make eval`.
+
+Verified on the kind cluster (bad-deploy): a developer's investigation proposed the
+rollback; the oncall user was refused; the lead who started it couldn't approve it
+(403); an oncall approver was refused by the MCP server; a second lead's approval rolled
+it back (error rate → 0). `make audit` showed all of it with the trace links.
 
 ## Changes with human approval (Phase 18)
 
@@ -692,4 +748,5 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Annotations / completions | `readOnlyHint` on every tool, enforced by the client; completions for resource-template arguments. |
 | Elicitation | Write tools ask for approval with `Resolve`/`Elicit`; the AI server answers via `Client(elicitation_callback=…)` from `POST /actions/{id}/approval`. |
 | Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`agent/llm/sampling.py`). |
+| Authorization | Bearer tokens checked by `MCPServer(token_verifier=…)` with `AuthSettings` (401 + protected resource metadata); scopes and roles enforced by server middleware (`MCPServer(middleware=[…])`). |
 | Host / client | The AI server is the host. `mcp.Client` is the client. |

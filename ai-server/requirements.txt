@@ -4,6 +4,7 @@ pydantic==2.13.5
 pydantic-settings==2.15.0
 mcp==2.2.0
 httpx2==2.13.1
+pyjwt==2.15.0
 langchain==1.4.2
 langchain-core==1.6.5
 langgraph==1.2.12

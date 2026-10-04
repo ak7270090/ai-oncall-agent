@@ -23,8 +23,8 @@ class Human:
         return self.answer
 
 
-APPROVE = ElicitResult(action="accept", content={"approve": True, "reason": "bad release"})
-REJECT = ElicitResult(action="accept", content={"approve": False, "reason": "not during peak hours"})
+APPROVE = ElicitResult(action="accept", content={"approve": True, "reason": "bad release", "approver": "bob"})
+REJECT = ElicitResult(action="accept", content={"approve": False, "reason": "not during peak hours", "approver": "bob"})
 
 
 def server_with_write_tools(operations: FakeOperations):

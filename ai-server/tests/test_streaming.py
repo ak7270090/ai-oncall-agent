@@ -89,7 +89,8 @@ def test_stream_ends_with_an_error_event_when_the_llm_fails(client):
 async def test_closing_the_stream_cancels_the_investigation():
     chat_model = scripted_model()
     dependencies = InvestigationDependencies(
-        Settings(_env_file=None), ModelRouter.single(chat_model), fake_connector(build_fake_mcp_server(PAYMENT_DOWN)), DISABLED_TRACER)
+        Settings(_env_file=None), ModelRouter.single(chat_model), fake_connector(build_fake_mcp_server(PAYMENT_DOWN)), DISABLED_TRACER,
+        "anonymous")
     stream = investigate_stream(InvestigateRequest(**QUESTION), dependencies)
 
     first = await anext(stream)

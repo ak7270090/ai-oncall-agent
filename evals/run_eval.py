@@ -25,8 +25,8 @@ sys.path.insert(0, str(REPO_ROOT / "ai-server"))
 from experiment_tracking import (  # noqa: E402
     ExperimentTracker,
     current_traceparent,
-    proposes_expected_action,
     normalized_service,
+    proposes_expected_action,
     use_safe_event_loop,
 )
 from incident_cases import (  # noqa: E402
@@ -41,6 +41,8 @@ RESULTS_DIR = Path(__file__).resolve().parent / "results"
 AI_SERVER_URL = os.environ.get("EVAL_AI_SERVER_URL", "http://127.0.0.1:8000")
 PROMETHEUS_URL = os.environ.get("EVAL_PROMETHEUS_URL", "http://127.0.0.1:9090")
 NAMESPACE = os.environ.get("EVAL_NAMESPACE", "shop")
+# The AI server's sign-in (Phase 19): an API key from its API_KEYS; unset when sign-in is off.
+API_KEY = os.environ.get("EVAL_API_KEY")
 SYMPTOM_TIMEOUT_SECONDS = 300
 HEALTHY_TIMEOUT_SECONDS = 420
 INVESTIGATE_TIMEOUT_SECONDS = 600
@@ -114,9 +116,12 @@ def grade(incident: IncidentCase, report: dict) -> tuple[bool, str]:
 
 def investigate(incident: IncidentCase, tracker: ExperimentTracker) -> dict:
     traceparent = current_traceparent()
+    headers = {"traceparent": traceparent} if traceparent else {}
+    if API_KEY:
+        headers["X-API-Key"] = API_KEY
     return request_json(f"{AI_SERVER_URL}/investigate", {
         "question": incident.question, "include_evidence_results": True, "trace_tags": tracker.trace_tags(incident),
-    }, INVESTIGATE_TIMEOUT_SECONDS, headers={"traceparent": traceparent} if traceparent else None)
+    }, INVESTIGATE_TIMEOUT_SECONDS, headers=headers)
 
 
 def _action_grade(incident: IncidentCase, report: dict) -> str:

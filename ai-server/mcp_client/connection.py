@@ -4,7 +4,9 @@ from contextlib import asynccontextmanager
 import httpx2
 from mcp import Client
 from mcp.client.session import ElicitationFnT, SamplingFnT
+from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
+from mcp.shared._httpx_utils import create_mcp_http_client
 
 
 class MCPUnavailableError(Exception):
@@ -20,7 +22,7 @@ def _unwrap_exception_group(error: BaseException) -> BaseException:
 @asynccontextmanager
 async def connect_to_mcp(
     server: str | MCPServer, timeout_seconds: float, sampling_callback: SamplingFnT | None = None,
-    elicitation_callback: ElicitationFnT | None = None,
+    elicitation_callback: ElicitationFnT | None = None, auth: httpx2.Auth | None = None,
 ) -> AsyncIterator[Client]:
     """Connected MCP client: Streamable HTTP for a URL, in-process for a server object.
 
@@ -29,10 +31,15 @@ async def connect_to_mcp(
     callers can catch ordinary exception types. `sampling_callback` answers the server's
     sampling requests (MCP sampling); without it the client doesn't offer sampling.
     `elicitation_callback` answers the server's questions to the user (approvals).
+    `auth` signs every HTTP request (bearer tokens, Phase 19).
     """
     try:
-        async with Client(server, read_timeout_seconds=timeout_seconds, sampling_callback=sampling_callback,
-                          elicitation_callback=elicitation_callback) as mcp_client:
+        async with (
+            create_mcp_http_client(auth=auth) as http_client,
+            Client(streamable_http_client(server, http_client=http_client) if isinstance(server, str) else server,
+                   read_timeout_seconds=timeout_seconds, sampling_callback=sampling_callback,
+                   elicitation_callback=elicitation_callback) as mcp_client,
+        ):
             yield mcp_client
     except BaseExceptionGroup as group:
         error = _unwrap_exception_group(group)

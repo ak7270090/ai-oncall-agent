@@ -10,6 +10,12 @@ services:
   mcp-server:
     build: ./mcp-server
     restart: unless-stopped
+    # Optional: MCP_AUTH_SIGNING_KEY, MCP_USER_ROLES, ... (see mcp-server/.env.example)
+    env_file:
+      - path: ./mcp-server/.env
+        required: false
+    volumes:
+      - ./mcp-server/logs:/app/logs
     environment:
       MCP_BACKEND: fake
       MCP_HOST: 0.0.0.0

@@ -373,3 +373,17 @@ message.
 - Replace, don't merge, when restoring a known state (rollback: JSON Patch replace of
   the pod template).
 - Test write paths on the real cluster too: merge semantics and RBAC only show there.
+
+## 24. Identity, authorization and audit
+
+- Authenticate at the edge (API key → person), authorize where the action happens (the
+  MCP server's roles), and pass the person along in a signed token, never in a plain
+  header or argument the agent could set.
+- Tokens are short-lived and minted per request; scopes match the job (an investigation
+  never holds `k8s:write`).
+- Refuse before running: authorization lives in server middleware, not inside tools.
+  Checks that need the tool's answer (the approver) live in the tool, with the same policy
+  object.
+- Every tool call is audited, refusals included, with the trace id; the audit log is only
+  appended to.
+- Off-by-default security switches warn loudly at startup when off.

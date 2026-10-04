@@ -14,6 +14,17 @@ class Settings(BaseSettings):
     mcp_server_url: str = "http://127.0.0.1:9000/mcp"
     mcp_timeout_seconds: float = 30
 
+    # Sign-in (Phase 19): API key (X-API-Key header) -> user name. Empty = no sign-in
+    # (local dev only): everyone is "anonymous".
+    api_keys: dict[str, str] = {}
+    # MCP bearer tokens, signed for the signed-in user with the key shared with the MCP
+    # server (its MCP_AUTH_SIGNING_KEY). Empty = no token sent. Issuer and audience must
+    # match the MCP server's MCP_AUTH_ISSUER_URL / MCP_AUTH_AUDIENCE.
+    mcp_token_signing_key: SecretStr | None = None
+    mcp_token_issuer: str = "http://127.0.0.1:8000"
+    mcp_token_audience: str = "oncall-mcp-server"
+    mcp_token_ttl_seconds: float = 60
+
     llm_model: str = "openai:gpt-5.4-mini"
     llm_api_key: SecretStr | None = None
     llm_timeout_seconds: float = 120

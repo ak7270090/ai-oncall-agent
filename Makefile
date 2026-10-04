@@ -17,7 +17,7 @@ MCP_TOKEN_TTL   ?= 24h
 KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
 COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f docker-compose.yml -f docker-compose.kind.yml
 
-.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay
+.PHONY: images redeploy help setup run-mcp-server run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
@@ -35,6 +35,8 @@ help:
 	@echo "incident-reset      back to the healthy base manifests"
 	@echo "eval [NAME=a,b]     inject each incident, ask the agent, grade its answer (needs cluster + both servers)"
 	@echo "replay [NAME=..] [TIMES=n] [RUN=..]  re-run only the LLM reasoning on evidence saved by an eval (seconds)"
+	@echo "audit [DEPLOYMENT=x] [SINCE=hours] [ALL=1]  who changed what and who approved it (MCP audit log)"
+	@echo "new-secret          print a random value for an API key or MCP_AUTH_SIGNING_KEY"
 
 setup:
 	for app in $(PYTHON_APPS); do \
@@ -137,6 +139,11 @@ eval:
 replay:
 	cd ai-server && .venv/$(VENV_BIN)/python ../evals/replay.py $(if $(RUN),--run ../$(RUN)) $(if $(NAME),--only $(NAME)) $(if $(TIMES),--times $(TIMES))
 
+audit:
+	cd mcp-server && .venv/$(VENV_BIN)/python -m access.audit_report $(if $(DEPLOYMENT),--deployment $(DEPLOYMENT)) $(if $(SINCE),--since-hours $(SINCE)) $(if $(ALL),--all)
+
+new-secret:
+	@$(PYTHON) -c "import secrets; print(secrets.token_urlsafe(32))"
 
 cluster-down:
 	kind delete cluster --name $(CLUSTER)

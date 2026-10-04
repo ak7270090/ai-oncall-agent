@@ -4,7 +4,7 @@ Learning-first build of an AI on-call assistant that investigates incidents acro
 Kubernetes and Prometheus through the Model Context Protocol (MCP). The goal is to
 learn MCP deeply through a real project, one phase at a time.
 
-**Status:** Phases 1–12, 15 and 17 are done. The agent investigates six injected
+**Status:** Phases 1–13 and 15–20 are done. The agent investigates six injected
 incidents and gets all six right, twice in a row (`make eval`); every investigation is
 traced in Langfuse and streamed live; every eval or replay run is a Langfuse experiment.
 Model routing (a strong and a fast model) and MCP sampling are in place.
@@ -92,8 +92,8 @@ Sizes in the roadmap are rough: **S** about a day, **M** two to three days, **L*
 | 16 | Advanced MCP | Completions and tool annotations | S | – | Done |
 | 17 | Advanced MCP | Sampling + model routing: cheap model for log summaries | L | 15 | Done |
 | 18 | Write actions | Write tools + human approval through elicitation | L | 16 | Done |
-| 19 | Security | MCP authentication (tokens, scopes) | M | 18 | Not started |
-| 20 | Security | Tool-level authorization + audit log | M | 19 | Not started |
+| 19 | Security | MCP authentication (tokens, scopes) | M | 18 | Done |
+| 20 | Security | Tool-level authorization + audit log | M | 19 | Done |
 | 21 | Security | Hardening (prompt injection, limits, TLS, policies) | M | 20 | Not started |
 | 22 | Advanced MCP | Multiple MCP servers, dynamic discovery, gateway | L | 19 | Not started |
 | 23 | LLM engineering | Evaluation rigor: more incidents, repeated runs, CI gate | M | – | Not started |
@@ -501,7 +501,16 @@ rollback; for `payment-down` it's scaling back up; nothing runs without approval
 **Done when:** a rollback on the kind cluster happens only after approval, and a
 rejected request changes nothing.
 
-### Phase 19 — MCP authentication
+### Phase 19 — MCP authentication (done)
+
+Built (README "Who may do what"): the AI server mints a 60-second HS256 JWT per MCP HTTP
+request for the signed-in person (`sub`), naming the agent (`client_id`) and the scopes;
+the MCP server verifies it (`token_verifier`), answers 401 otherwise and publishes the
+protected resource metadata. Investigations get `k8s:read` only (write tools aren't even
+listed); operations for the report are listed in a separate write-scoped session. The AI
+server's API needs `X-API-Key`. A real authorization server (Keycloak, Entra ID) can
+replace the shared key later: only the verifier changes.
+
 
 **Why:** today anything that can reach port 9000 can call the tools. With write tools,
 that's unacceptable.
@@ -522,7 +531,15 @@ authorization server issues tokens, and checks each token's scopes.
 **Done when:** an unauthenticated request is rejected and scopes decide which tools are
 offered.
 
-### Phase 20 — Tool-level authorization and audit log
+### Phase 20 — Tool-level authorization and audit log (done)
+
+Built: middleware with the role → write tools map; four eyes (AI server 403 and MCP
+server re-check of the approver named in the elicitation answer); JSON-lines audit log
+with the trace id from `_meta.traceparent`; `make audit`. Verified live: the oncall user
+refused, self-approval 403, oncall approver refused, a second lead's approval rolled back
+bad-deploy; eval with an API key 1/1. Known limit: the MCP server trusts the AI server
+to name the approver (the elicitation answer isn't signed by the approver).
+
 
 **Why:** Kubernetes RBAC limits what the *MCP server* may do; it can't tell which
 *person* asked. On-call needs "who did what, and who approved it".
@@ -854,7 +871,7 @@ A suggested order, cheapest and most useful first:
 3. **Phase 26 (model routing II):** decide every step's model by data.
 4. **Phase 13 (resources), then 27 (incident memory / RAG):** the knowledge features.
 5. **Phase 28 (groundedness):** before anyone relies on the reports.
-6. **Phases 29, 18–21:** conversations, then write actions with approval and security.
+6. **Phases 29, 21:** conversations, then hardening (18–20 are done).
 7. **Phases 30, 31, 32, 22:** the larger experiments.
 
 ---

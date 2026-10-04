@@ -27,19 +27,20 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.trace import ReadableSpan
 
 from config import Settings
-from constants import INVESTIGATION_TRACE_NAME, MCP_SDK_TRACER_NAME, TRACEPARENT_PATTERN
+from constants import ACTION_TRACE_NAME, INVESTIGATION_TRACE_NAME, MCP_SDK_TRACER_NAME, TRACEPARENT_PATTERN
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class TraceLabels:
-    """Optional tags for filtering traces in Langfuse (e.g. eval, incident:db-down), and
-    an optional W3C `traceparent` of the caller's span: the investigation is then
-    recorded inside the caller's trace (an eval experiment item)."""
+    """Optional tags for filtering traces in Langfuse (e.g. eval, incident:db-down), an
+    optional W3C `traceparent` of the caller's span: the investigation is then recorded
+    inside the caller's trace (an eval experiment item), and the signed-in user."""
 
     tags: tuple[str, ...] = ()
     traceparent: str | None = None
+    user_id: str | None = None
 
 
 NO_LABELS = TraceLabels()
@@ -82,7 +83,7 @@ class InvestigationTracer:
             self._client.start_as_current_observation(
                 trace_context=parent, name=INVESTIGATION_TRACE_NAME, as_type="agent",
                 input={"question": question}) as root_span,
-            propagate_attributes(trace_name=None if nested else INVESTIGATION_TRACE_NAME,
+            propagate_attributes(trace_name=None if nested else INVESTIGATION_TRACE_NAME, user_id=labels.user_id,
                                  metadata=self._trace_metadata, tags=list(labels.tags) or None),
         ):
             trace_id = self._client.get_current_trace_id()
@@ -93,6 +94,20 @@ class InvestigationTracer:
                 trace_url=self._trace_url(trace_id),
                 root_span=root_span,
             )
+
+    @contextmanager
+    def trace_action(self, description: str, user_id: str) -> Iterator[InvestigationTrace]:
+        """One trace per approved-or-not change (POST /actions). The MCP client sends its
+        trace id along, so the MCP server's audit record points to it."""
+        if self._client is None:
+            yield InvestigationTrace()
+            return
+        with (
+            self._client.start_as_current_observation(name=ACTION_TRACE_NAME, input={"action": description}) as root_span,
+            propagate_attributes(trace_name=ACTION_TRACE_NAME, user_id=user_id, metadata=self._trace_metadata),
+        ):
+            trace_id = self._client.get_current_trace_id()
+            yield InvestigationTrace(trace_id=trace_id, trace_url=self._trace_url(trace_id), root_span=root_span)
 
     def _trace_url(self, trace_id: str | None) -> str | None:
         # The first call asks Langfuse for the project id; an unreachable Langfuse must

@@ -134,8 +134,10 @@ class OperationResult(BaseModel):
     deployment: str
     done: bool
     detail: str
-    approval: Literal["approved", "rejected", "declined", "cancelled"]
+    approval: Literal["approved", "rejected", "declined", "cancelled", "refused"]
     approval_reason: str | None = None
+    requested_by: str
+    approved_by: str | None = None
 
 
 class ClusterEvent(BaseModel):

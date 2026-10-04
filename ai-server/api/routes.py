@@ -14,9 +14,11 @@ from agent import (
     run_investigation,
 )
 from api.dependencies import (
+    CurrentUserDep,
     InvestigationDependencies,
     InvestigationDependenciesDep,
     MCPConnectorDep,
+    ServiceMCPConnectorDep,
 )
 from api.errors import describe_error
 from api.schemas import (
@@ -27,7 +29,7 @@ from api.schemas import (
     ToolDescription,
     ToolsResponse,
 )
-from constants import HEALTH_STATUS_OK, READY_STATUS, McpOperation, StreamEvent
+from constants import HEALTH_STATUS_OK, READY_STATUS, WRITE_SCOPES, McpOperation, StreamEvent
 from mcp_client import (
     is_read_only,
     list_all_resource_templates,
@@ -50,15 +52,16 @@ async def health() -> StatusResponse:
 
 
 @router.get("/ready", response_model=StatusResponse)
-async def ready(open_mcp: MCPConnectorDep) -> StatusResponse:
+async def ready(open_mcp: ServiceMCPConnectorDep) -> StatusResponse:
     async with open_mcp() as mcp_client:
         await list_all_tools(mcp_client)
     return StatusResponse(status=READY_STATUS)
 
 
 @router.get("/tools", response_model=ToolsResponse)
-async def list_tools(open_mcp: MCPConnectorDep) -> ToolsResponse:
-    async with open_mcp() as mcp_client:
+async def list_tools(open_mcp: MCPConnectorDep, _: CurrentUserDep) -> ToolsResponse:
+    """Every tool, write tools included (listed with a write-scoped token)."""
+    async with open_mcp(scopes=WRITE_SCOPES) as mcp_client:
         tools = await list_all_tools(mcp_client)
     return ToolsResponse(tools=[
         ToolDescription(name=t.name, description=t.description or "", input_schema=t.input_schema,
@@ -101,6 +104,14 @@ async def investigate_stream(
                 await investigation
 
 
+async def _list_operations(dependencies: InvestigationDependencies) -> list[str]:
+    """Write tools the report may propose. The investigation's own token can only read
+    (the MCP server hides write tools from it), so they are listed with a write-scoped
+    one, in a separate short session."""
+    async with dependencies.open_mcp(scopes=WRITE_SCOPES) as mcp_client:
+        return [t.name for t in await list_all_tools(mcp_client) if t.name in set(McpOperation)]
+
+
 async def _run_investigation(
     request: InvestigateRequest, dependencies: InvestigationDependencies, traceparent: str | None,
     events: InvestigationEvents | None = None,
@@ -108,10 +119,10 @@ async def _run_investigation(
     settings = dependencies.settings
     on_progress = events.on_tool_progress if events else None
     sampling = SamplingResponder(dependencies.models, settings.max_samplings_per_investigation)
+    operations = await _list_operations(dependencies)
     async with dependencies.open_mcp(sampling) as mcp_client:
         tools, refused = split_read_only(await list_all_tools(mcp_client))
-        operations = [t.name for t in refused if t.name in set(McpOperation)]
-        if unknown := [t.name for t in refused if t.name not in operations]:
+        if unknown := [t.name for t in refused if t.name not in set(McpOperation)]:
             logger.warning("Not giving the agent tools without a read-only annotation: %s", ", ".join(unknown))
         graph = build_investigation_graph(
             dependencies.models,
@@ -122,7 +133,7 @@ async def _run_investigation(
         )
         result = await run_investigation(
             graph, request.question, settings.max_follow_up_rounds, dependencies.tracer,
-            TraceLabels(tuple(request.trace_tags), traceparent),
+            TraceLabels(tuple(request.trace_tags), traceparent, dependencies.user),
             [events.callback_handler()] if events else (), sampling,
         )
     return InvestigateResponse(

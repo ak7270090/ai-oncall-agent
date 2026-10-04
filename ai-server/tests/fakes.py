@@ -177,7 +177,7 @@ def build_fake_mcp_server(incident: dict[str, Any], with_metrics: bool = True, w
 
 
 def fake_connector(server: MCPServer):
-    return lambda sampling_callback=None, elicitation_callback=None: connect_to_mcp(
+    return lambda sampling_callback=None, elicitation_callback=None, scopes=(): connect_to_mcp(
         server, TEST_MCP_TIMEOUT_SECONDS, sampling_callback, elicitation_callback)
 
 

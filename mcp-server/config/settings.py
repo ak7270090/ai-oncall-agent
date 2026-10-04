@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +44,31 @@ class Settings(BaseSettings):
     log_summary_min_lines: int = 40
     log_summary_max_tokens: int = 500
     log_cache_seconds: float = 30
+
+    # Authentication (Phase 19): bearer tokens are JWTs signed with this key (HS256), issued
+    # by the AI server for its signed-in user. Empty = no authentication (local dev only:
+    # anyone who reaches the port may call every tool).
+    auth_signing_key: SecretStr | None = None
+    # Must match the tokens' `iss` and `aud` claims. The issuer is published as this
+    # server's authorization server (OAuth protected resource metadata).
+    auth_issuer_url: str = "http://127.0.0.1:8000"
+    auth_audience: str = "oncall-mcp-server"
+    # This server's public MCP URL, published in the protected resource metadata.
+    public_url: str = "http://127.0.0.1:9000/mcp"
+
+    # Authorization (Phase 20): each user's role, and the write tools each role may call
+    # and approve. Every known role may call the read-only tools; unknown users nothing.
+    user_roles: dict[str, str] = {}
+    role_write_tools: dict[str, list[str]] = {
+        "developer": [],
+        "oncall": ["restart_deployment", "scale_deployment"],
+        "lead": ["restart_deployment", "scale_deployment", "rollback_deployment"],
+    }
+    # Append-only audit log of tool calls and approvals (JSON lines).
+    audit_log_path: Path = Path("logs/audit.jsonl")
+    # Shown next to trace ids by `make audit`, e.g.
+    # https://cloud.langfuse.com/project/<project-id>/traces/{trace_id}
+    trace_url_template: str | None = None
 
     # Team knowledge published as MCP resources: runbooks/<service>.md and
     # topology/<namespace>.json (default: mcp-server/knowledge).

@@ -4,7 +4,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.runnables import RunnableLambda
 
 from agent import ModelRouter, create_chat_model
-from api.dependencies import get_mcp_connector, get_model_router
+from api.dependencies import get_mcp_connector, get_model_router, get_service_mcp_connector
 from config import Settings, get_settings
 from constants import LLM_FAILURE_MESSAGE, Step
 from main import app
@@ -38,6 +38,7 @@ def client():
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
     app.dependency_overrides[get_model_router] = lambda: ModelRouter.single(scripted_model())
     app.dependency_overrides[get_mcp_connector] = lambda: fake_connector(build_fake_mcp_server(PAYMENT_DOWN))
+    app.dependency_overrides[get_service_mcp_connector] = app.dependency_overrides[get_mcp_connector]
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -102,7 +103,8 @@ def test_missing_llm_credentials_returns_502(client, monkeypatch):
 
 
 def test_unreachable_mcp_returns_503(client):
-    app.dependency_overrides[get_mcp_connector] = lambda: lambda sampling_callback=None, elicitation_callback=None: connect_to_mcp(UNREACHABLE_MCP_URL, 5)
+    app.dependency_overrides[get_mcp_connector] = lambda: lambda sampling_callback=None, elicitation_callback=None, scopes=(): connect_to_mcp(UNREACHABLE_MCP_URL, 5)
+    app.dependency_overrides[get_service_mcp_connector] = app.dependency_overrides[get_mcp_connector]
     assert client.get("/ready").status_code == 503
     assert client.get("/tools").status_code == 503
     assert client.post("/investigate", json={"question": "hi"}).status_code == 503

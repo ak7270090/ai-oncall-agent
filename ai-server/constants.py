@@ -39,6 +39,24 @@ class McpOperation(StrEnum):
     ROLLBACK_DEPLOYMENT = "rollback_deployment"
 
 
+class McpScope(StrEnum):
+    """Scopes of the MCP server's bearer tokens (Phase 19). Investigations only read;
+    actions (POST /actions) may also write."""
+
+    READ = "k8s:read"
+    WRITE = "k8s:write"
+
+
+READ_SCOPES = (McpScope.READ,)
+WRITE_SCOPES = (McpScope.READ, McpScope.WRITE)
+MCP_TOKEN_ALGORITHM = "HS256"
+# The agent named in the MCP tokens (`client_id`), and the person it acts for when
+# nobody signed in (no API keys configured) or for its own checks (/ready).
+AGENT_CLIENT_ID = "oncall-ai-server"
+ANONYMOUS_USER = "anonymous"
+API_KEY_HEADER = "X-API-Key"
+
+
 class ActionStatus(StrEnum):
     STARTING = "starting"
     AWAITING_APPROVAL = "awaiting_approval"
@@ -108,6 +126,7 @@ RUNNING_POD_STATUS = "Running"
 
 # Name of the Langfuse trace recorded for each investigation.
 INVESTIGATION_TRACE_NAME = "investigate"
+ACTION_TRACE_NAME = "action"
 # OpenTelemetry tracer name the mcp SDK uses for its own spans (not exported).
 MCP_SDK_TRACER_NAME = "mcp-python-sdk"
 # W3C Trace Context header (https://www.w3.org/TR/trace-context/): version-traceid-spanid-flags.

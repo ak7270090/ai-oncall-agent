@@ -67,3 +67,40 @@ TOPOLOGY_URI = "topology://{namespace}"
 DEPLOYMENT_SPEC_URI = "k8s://{namespace}/deployments/{name}"
 
 HEALTH_STATUS_OK = "ok"
+
+# Write tools (Phase 18): the only tools that change the cluster.
+class Operation(StrEnum):
+    RESTART_DEPLOYMENT = "restart_deployment"
+    SCALE_DEPLOYMENT = "scale_deployment"
+    ROLLBACK_DEPLOYMENT = "rollback_deployment"
+
+
+WRITE_TOOLS = frozenset(Operation)
+
+# Authentication (Phase 19): OAuth scopes of the MCP server's bearer tokens, and how the
+# tokens are signed (HMAC with a key shared with the AI server, which issues them).
+class Scope(StrEnum):
+    READ = "k8s:read"
+    WRITE = "k8s:write"
+
+
+TOKEN_ALGORITHM = "HS256"
+TOKEN_REQUIRED_CLAIMS = ("exp", "iat", "sub", "iss", "aud", "scope")
+# Who calls when there is no token: stdio, in-process, or authentication switched off.
+ANONYMOUS_USER = "anonymous"
+
+# Authorization and audit (Phase 20). JSON-RPC error code of a refused request (the
+# -32000..-32099 range is left to servers).
+ACCESS_DENIED_ERROR_CODE = -32003
+
+
+class AuditEvent(StrEnum):
+    TOOL_CALL = "tool_call"
+    APPROVAL_REQUESTED = "approval_requested"
+    REFUSED = "refused"
+
+
+class AuditOutcome(StrEnum):
+    OK = "ok"
+    ERROR = "error"
+    REFUSED = "refused"
