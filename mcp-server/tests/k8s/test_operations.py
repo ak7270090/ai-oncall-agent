@@ -4,7 +4,7 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import ElicitResult
 
 from config import Settings
-from fake.operations import FakeOperations
+from k8s.fake_operations import FakeOperations
 from server import create_server
 
 pytestmark = pytest.mark.anyio

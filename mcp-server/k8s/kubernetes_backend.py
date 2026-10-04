@@ -9,8 +9,9 @@ from kubernetes.client.rest import ApiException
 from kubernetes.config.config_exception import ConfigException
 from urllib3.exceptions import HTTPError as TransportError
 
-from cluster.backend import ClusterError, no_previous_container_error, not_found_error
-from cluster.models import (
+from constants import REVISION_ANNOTATION, WARNING_EVENT_TYPE
+from k8s.backend import ClusterError, no_previous_container_error, not_found_error
+from k8s.models import (
     ClusterEvent,
     Condition,
     ContainerSpec,
@@ -21,7 +22,6 @@ from cluster.models import (
     PodDetail,
     ReplicaSetRevision,
 )
-from constants import REVISION_ANNOTATION, WARNING_EVENT_TYPE
 
 
 def load_api_client(kubeconfig_path: str) -> client.ApiClient:

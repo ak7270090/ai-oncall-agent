@@ -35,20 +35,20 @@ User ──► ai-server (FastAPI + LangGraph + LLM + MCP client)   evals/ (make
 
 | Phase | What was built | Where it lives |
 | --- | --- | --- |
-| 1 | MCP server with fake tools | `mcp-server/server.py`, `mcp-server/fake/` |
+| 1 | MCP server with fake tools | `mcp-server/server.py`, `mcp-server/fake_incident.py`, `k8s/fake_*.py` |
 | 2 | AI server + MCP client | `ai-server/main.py`, `ai-server/mcp_client/` |
 | 3 | Streamable HTTP between the two apps | `mcp_client/connection.py`, `MCP_SERVER_URL` |
 | 4 | Docker | each app's `Dockerfile`, `docker-compose.yml` (`make up`) |
 | 5 | Local Kubernetes with three sample services | `kubernetes/base/`, `sample-services/` (`make cluster-up`) |
-| 6 | Real Kubernetes tools, read-only RBAC | `mcp-server/tools/kubernetes.py`, `cluster/`, `kubernetes/base/rbac/` |
-| 7 | Prometheus + metrics tools | `kubernetes/monitoring/`, `mcp-server/observability/`, `tools/observability.py` |
+| 6 | Real Kubernetes tools, read-only RBAC | `mcp-server/k8s/`, `kubernetes/base/rbac/` |
+| 7 | Prometheus + metrics tools | `kubernetes/monitoring/`, `mcp-server/prometheus/` |
 | 8 | LangGraph investigation (fixed checks + LLM reasoning) | `ai-server/agent/` |
 | 9 | Incident injection + graded eval | `kubernetes/incidents/`, `evals/` (`make incident`, `make eval`, `make replay`) |
 | 10 | Agent metrics: covered by Langfuse dashboards (tokens, cost, latency per step and model) | Langfuse UI |
 | 11 | Tracing of every investigation | `ai-server/tracing/`, README "Tracing with Langfuse" |
 | 12 | Eval and replay runs as Langfuse experiments, scored per incident | `evals/experiment_tracking.py`, README "Comparing runs in Langfuse" |
 | 15 | Live progress over Server-Sent Events, MCP progress, cancellation | `ai-server/streaming/`, `POST /investigate/stream` |
-| 17 | MCP sampling for log summaries, model routing (strong / fast tier) | `mcp-server/tools/log_summary.py`, `ai-server/agent/llm/model_router.py` |
+| 17 | MCP sampling for log summaries, model routing (strong / fast tier) | `mcp-server/k8s/log_summary.py`, `ai-server/agent/llm/model_router.py` |
 | – | Computed findings (CPU-starved, slow now vs. recovered), parallel traffic | `agent/evidence/helpers.py::computed_findings` |
 
 ## How every phase is done

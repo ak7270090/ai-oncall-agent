@@ -5,8 +5,8 @@ from mcp_types import CreateMessageResult, TextContent
 from access import AuditLog
 from config import Settings
 from constants import LOG_LINES_KEPT_WITH_SUMMARY, LOG_SUMMARY_TASK
+from k8s.log_summary import RecentLogs
 from server import create_server
-from tools.log_summary import RecentLogs
 
 pytestmark = pytest.mark.anyio
 CRASHING_POD = "payment-service-7d9f8c6b5-2xkqp"

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from kubernetes import client as k8s
 
-from cluster import ClusterError, KubernetesOperations
+from k8s import ClusterError, KubernetesOperations
 
 NAMESPACE = "shop"
 

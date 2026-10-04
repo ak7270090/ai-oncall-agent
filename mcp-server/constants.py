@@ -1,6 +1,6 @@
 """Fixed values of the MCP server. Anything an operator may want to tune per
 environment (URLs, timeouts, allowed namespaces, rate windows) lives in
-config/settings.py instead. Fake incident data lives in fake/incident_data.py."""
+config/settings.py instead. Fake incident data lives in fake_incident.py."""
 
 from enum import StrEnum
 from typing import Literal
@@ -52,7 +52,7 @@ SERVICE_OVERVIEW_METRICS: tuple[Metric, ...] = (Metric.REQUEST_RATE, Metric.ERRO
 METRIC_VALUE_DECIMALS = 4
 BYTES_PER_MIB = 1024 * 1024
 
-# Log summaries through MCP sampling (tools/log_summary.py): what the summary request
+# Log summaries through MCP sampling (k8s/log_summary.py): what the summary request
 # asks of the client's model (0-1; cheap and fast matter more than intelligence), and
 # how many raw lines are kept next to the summary.
 LOG_SUMMARY_TASK = "summarize_pod_logs"

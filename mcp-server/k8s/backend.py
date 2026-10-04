@@ -2,7 +2,7 @@ from typing import Protocol
 
 from mcp.server.mcpserver.exceptions import ToolError
 
-from cluster.models import (
+from k8s.models import (
     ClusterEvent,
     DeploymentDetail,
     DeploymentSpec,

@@ -6,7 +6,8 @@ its pods crash-loop; order-service fails downstream; user-service is healthy.
 
 from datetime import datetime, timezone
 
-from cluster.models import (
+from constants import Metric
+from k8s.models import (
     ClusterEvent,
     Condition,
     ContainerStatus,
@@ -14,7 +15,6 @@ from cluster.models import (
     PodDetail,
     ReplicaSetRevision,
 )
-from constants import Metric
 
 NAMESPACE = "shop"
 CPU_LIMIT = "250m"
@@ -131,7 +131,7 @@ EVENTS: list[ClusterEvent] = [
                  message="Scaled up replica set payment-service-7d9f8c6b5 to 2", count=1, last_seen=_utc_time(9, 42)),
 ]
 
-# Last 5 one-minute samples (oldest first) per service per metric; see observability/queries.py for units.
+# Last 5 one-minute samples (oldest first) per service per metric; see prometheus/queries.py for units.
 METRICS_END_TIME = _utc_time(10, 0)
 METRICS: dict[str, dict[Metric, list[float]]] = {
     "payment-service": {

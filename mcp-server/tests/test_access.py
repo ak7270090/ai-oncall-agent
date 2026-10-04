@@ -18,7 +18,7 @@ from mcp_types import ElicitResult
 from access import AuditLog
 from config import Settings
 from constants import ACCESS_DENIED_ERROR_CODE, Scope
-from fake.operations import FakeOperations
+from k8s.fake_operations import FakeOperations
 from server import create_server
 
 pytestmark = pytest.mark.anyio

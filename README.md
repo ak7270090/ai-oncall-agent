@@ -23,15 +23,18 @@ server's URL.
 ```text
 ai-oncall-agent/
 ├── mcp-server/
-│   ├── server.py              create_server(): registers tools, /health route
+│   ├── server.py              create_server(): registers the configured tool sets, auth, /health
 │   ├── config/settings.py     MCP_* settings
-│   ├── cluster/               real Kubernetes: backend.py (interface), kubernetes_backend.py, models.py
-│   ├── observability/         real Prometheus: backend.py (interface), prometheus_backend.py, queries.py (PromQL)
-│   ├── fake/                  MCP_BACKEND=fake: incident_data.py, cluster_backend.py, metrics_backend.py
-│   ├── tools/                 tool layer: kubernetes.py, observability.py, helpers.py (namespace allowlist)
-│   ├── resources/             MCP resources: runbooks, service map, deployment specs; completions
+│   ├── k8s/                   Kubernetes tool set: tools.py, write_tools.py, log_summary.py, resources.py,
+│   │                          completions.py; backend.py (interface), kubernetes_backend.py, operations.py,
+│   │                          models.py; fake_backend.py, fake_operations.py (MCP_BACKEND=fake)
+│   ├── prometheus/            Prometheus tool set: tools.py, helpers.py; backend.py (interface),
+│   │                          prometheus_backend.py, queries.py (PromQL), models.py; fake_backend.py
+│   ├── access/                tokens, roles, four eyes, audit log (Phases 19–20)
+│   ├── tool_helpers.py        ToolDefinition, annotations, namespace allowlist (both tool sets)
+│   ├── fake_incident.py       the canned incident both fakes serve
 │   ├── knowledge/             team knowledge: runbooks/<service>.md, topology/<namespace>.json
-│   └── tests/                 unit + integration/ (live kind cluster, RBAC checks)
+│   └── tests/                 k8s/, prometheus/, shared tests; integration/ (live kind cluster, RBAC checks)
 ├── ai-server/
 │   ├── main.py                create_app(), error → HTTP status mapping
 │   ├── api/                   routes, schemas, dependencies
@@ -213,7 +216,7 @@ fields shown above, never environment variables or other parts of a pod spec.
 | Layer | Enforces |
 | --- | --- |
 | **RBAC** (`kubernetes/base/rbac/mcp-server.yaml`) | The `mcp-server` ServiceAccount can only `get/list` pods, pods/log, events, deployments and ReplicaSets in `shop`: no Secrets, no other namespaces, no writes. Enforced by the API server even if our code has a bug. |
-| **Tool layer** (`mcp-server/tools/kubernetes.py`) | Namespace allowlist (`MCP_ALLOWED_NAMESPACES`), validated arguments (log lines ≤ 500), trimmed output, readable errors for the model |
+| **Tool layer** (`mcp-server/k8s/tools.py`) | Namespace allowlist (`MCP_ALLOWED_NAMESPACES`), validated arguments (log lines ≤ 500), trimmed output, readable errors for the model |
 
 The MCP server never uses your admin kubeconfig. `make cluster-up` runs
 `make mcp-kubeconfig`, which creates a **short-lived token** (default 24h, set
@@ -257,7 +260,7 @@ traffic-generator ──4 workers × ~1 order/s──► order-service ──►
 | `get_service_overview(namespace)` | Current request rate, error rate and p99 latency for every service, to find the failing one |
 | `get_metrics(service, metric, minutes)` | History of one metric (one sample per minute), to see *when* it changed |
 
-**The PromQL behind each metric** (`mcp-server/observability/queries.py`,
+**The PromQL behind each metric** (`mcp-server/prometheus/queries.py`,
 with `sel` = `namespace="shop",service="…"`):
 
 | Metric | PromQL | Function learned |
@@ -483,7 +486,7 @@ POST /actions/53c3…/approval {"approve": true, "reason": "v2 breaks payments"}
 GET  /actions/53c3…  → {"status": "done", "result": {"detail": "Rolled back deployment ..."}}
 ```
 
-- **Write tools** (`mcp-server/tools/operations.py`, off unless `MCP_ENABLE_WRITE_TOOLS=true`):
+- **Write tools** (`mcp-server/k8s/write_tools.py`, off unless `MCP_ENABLE_WRITE_TOOLS=true`):
   `restart_deployment`, `scale_deployment` (0–`MCP_MAX_REPLICAS`), `rollback_deployment`,
   annotated `destructiveHint=true`, so the investigating agent never gets them (Phase 16).
 - **Approval = MCP elicitation:** each tool first checks its arguments (deployment exists,
@@ -546,14 +549,14 @@ already passes all six incidents.
 ## Tool annotations and completions (Phase 16)
 
 - **Annotations:** every tool is registered with `readOnlyHint=true`,
-  `destructiveHint=false`, `idempotentHint=true` (`tools/helpers.py::READ_ONLY_TOOL`).
+  `destructiveHint=false`, `idempotentHint=true` (`tool_helpers.py::READ_ONLY_TOOL`).
   The AI server gives the agent **only** tools annotated read-only
   (`mcp_client/tool_policy.py`); a tool without annotations counts as unsafe and is
   logged and left out. `GET /tools` shows `read_only` / `destructive` per tool. Hints
   are not security: RBAC still limits what the MCP server can do.
 - **Completions:** autocomplete for resource arguments in MCP clients:
   `runbook://pay…` → `payment-service`, `payments-db`; `k8s://shop/deployments/…` lists
-  the deployments (`resources/completions.py`). MCP completions exist for resource-template
+  the deployments (`k8s/completions.py`). MCP completions exist for resource-template
   and prompt arguments, not for tool arguments.
 
 ## Log summaries and model routing (Phase 17)
@@ -579,7 +582,7 @@ inspect_flagged_problems ─► tools/call get_pod_logs(pod, lines=200, summariz
 find_root_cause / write_report ─► the strong model reads the summary, not 200 lines
 ```
 
-- **MCP sampling** (`mcp-server/tools/log_summary.py`): the MCP server asks the
+- **MCP sampling** (`mcp-server/k8s/log_summary.py`): the MCP server asks the
   *client's* LLM for the summary, so it holds no API key and picks no model. It only
   states preferences; with protocol 2026-07-28 the SDK sends them as an "input
   required" result and re-runs the tool with the answer. The question must be identical
@@ -643,7 +646,7 @@ How it works, in two hops:
 1. **MCP server → AI server (MCP progress notifications).** `get_service_overview`
    runs three PromQL queries; after each one the backend calls back and the tool sends
    `ctx.report_progress(done, 3, "error_rate queried in 0.4s")`
-   (`mcp-server/tools/helpers.py::query_progress_reporter`). The AI server passes a
+   (`mcp-server/prometheus/helpers.py::query_progress_reporter`). The AI server passes a
    `progress_callback` with every `call_tool`, which is what asks the server for progress.
 2. **AI server → user (SSE).** `ai-server/streaming/` collects three sources into one
    queue: LangChain callbacks (steps, tool calls, LLM calls, notes), MCP progress, and
@@ -801,7 +804,7 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Tool errors | Schema violations and `ToolError` come back as `is_error=True`. The SDK hides the text of unexpected exceptions. |
 | Transport | Streamable HTTP at `/mcp`. stdio is available with `MCP_TRANSPORT=stdio`. |
 | Progress | `ctx.report_progress` in `get_service_overview`; the client opts in per call with `progress_callback` (`mcp_client/progress.py`). |
-| Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-server/resources/`); read by the client with `read_resource`. |
+| Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-server/k8s/resources.py`); read by the client with `read_resource`. |
 | Annotations / completions | `readOnlyHint` on every tool, enforced by the client; completions for resource-template arguments. |
 | Elicitation | Write tools ask for approval with `Resolve`/`Elicit`; the AI server answers via `Client(elicitation_callback=…)` from `POST /actions/{id}/approval`. |
 | Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`agent/llm/sampling.py`). |

@@ -5,9 +5,9 @@ from datetime import datetime, timedelta, timezone
 import httpx2
 
 from constants import METRIC_VALUE_DECIMALS, SERVICE_OVERVIEW_METRICS, Metric
-from observability.backend import MetricsError, QueryDone
-from observability.models import MetricSample, ServiceHealth
-from observability.queries import build_query
+from prometheus.backend import MetricsError, QueryDone
+from prometheus.models import MetricSample, ServiceHealth
+from prometheus.queries import build_query
 
 
 def _parse_value(raw: str) -> float | None:

@@ -23,7 +23,7 @@ message.
   `enum` rather than a `$ref`. Messages that embed variables stay as f-strings where
   they're raised.
 - A message that more than one implementation produces (real and fake backend) is
-  built in one shared function next to the error type (`cluster/backend.py::
+  built in one shared function next to the error type (`k8s/backend.py::
   not_found_error`), so the implementations can't drift apart.
 - Values that define an API contract (such as a tool's maximum `lines`) are named
   module-level constants (`MAX_LOG_LINES`). Never leave an unexplained literal
@@ -70,7 +70,9 @@ message.
   the top-level `agent/__init__.py` exports the public API.
 - Build objects in factory functions (`create_app`, `create_server`,
   `create_chat_model`, `build_investigation_graph`) so tests can build their own.
-- Group MCP tools by domain (`tools/kubernetes.py`, `tools/observability.py`).
+- Group the MCP server by tool set, not by layer: `k8s/` and `prometheus/` each hold
+  their tools, backends, models and fakes; only what both use is shared
+  (`tool_helpers.py`, `access/`, `config/`, `constants.py`, `fake_incident.py`).
   Each module exports a tuple of tools, and `create_server` registers them all.
 - Before writing a helper, check whether one already exists. Extend it rather
   than copying it.
@@ -98,11 +100,12 @@ message.
   `prometheus-deployment.yaml` (Kubernetes manifest) and `scrape-config.yml`
   (Prometheus config), not `prometheus.yaml` and `prometheus.yml`. Kubernetes manifests
   are named after what they contain.
-- Keep fake implementations out of the real ones' folders: `mcp-server/fake/` holds
-  every `MCP_BACKEND=fake` backend and its canned data. Test-only fakes stay in
-  `tests/` (`tests/fakes.py`).
+- Keep fake implementations out of the real ones' files: each `MCP_BACKEND=fake` backend
+  sits in its own module next to the real one it replaces (`k8s/fake_backend.py`,
+  `prometheus/fake_backend.py`), and the canned incident both serve is
+  `fake_incident.py`. Test-only fakes stay in `tests/` (`tests/fakes.py`).
 - Small pure functions used by the other modules of a package go in that
-  package's `helpers.py` (`agent/evidence/helpers.py`, `tools/helpers.py`). Don't
+  package's `helpers.py` (`agent/evidence/helpers.py`, `prometheus/helpers.py`). Don't
   create a project-wide `utils.py`.
 - Don't create a file for a single small function. Put it where it belongs,
   e.g. formatting a report is `IncidentReport.to_markdown()` in `agent/models.py`.
@@ -114,7 +117,7 @@ message.
   (`build_kubernetes_tools`) use closures because each tool's JSON Schema
   (defaults, allowed namespaces) is built from settings at startup; small handler
   factories (`mcp_client/progress.py::progress_callback_for`,
-  `tools/helpers.py::query_progress_reporter`) return a configured callback.
+  `prometheus/helpers.py::query_progress_reporter`) return a configured callback.
 - Keep state shapes in their own module (`agent/workflow/state.py`), next to a constructor for
   the initial state.
 

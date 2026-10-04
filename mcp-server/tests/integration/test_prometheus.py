@@ -6,7 +6,7 @@ import time
 import pytest
 
 from config import Settings
-from observability import MetricsError, PrometheusBackend
+from prometheus import MetricsError, PrometheusBackend
 
 SETTINGS = Settings(_env_file=None)
 NAMESPACE = SETTINGS.default_namespace

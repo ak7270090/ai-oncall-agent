@@ -25,11 +25,11 @@ from mcp.server.mcpserver.resolve import Elicit, Resolve
 from pydantic import BaseModel, Field
 
 from access import AccessPolicy, get_caller
-from cluster import ClusterBackend, ClusterOperations
-from cluster.models import OperationResult
 from config import Settings
 from constants import Operation
-from tools.helpers import ToolDefinition, change_tool, namespace_guard
+from k8s import ClusterBackend, ClusterOperations
+from k8s.models import OperationResult
+from tool_helpers import ToolDefinition, change_tool, namespace_guard
 
 
 class Approval(BaseModel):

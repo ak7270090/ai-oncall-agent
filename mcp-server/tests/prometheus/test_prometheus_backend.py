@@ -1,8 +1,8 @@
 import httpx2
 import pytest
 
-from observability import MetricsError, PrometheusBackend
-from observability.queries import build_query
+from prometheus import MetricsError, PrometheusBackend
+from prometheus.queries import build_query
 
 BASE_URL = "http://prometheus.test"
 

@@ -8,13 +8,13 @@ from typing import Protocol
 
 from kubernetes import client
 
-from cluster.backend import ClusterError
-from cluster.kubernetes_backend import load_api_client, translate_errors
 from constants import (
     POD_TEMPLATE_HASH_LABEL,
     RESTARTED_AT_ANNOTATION,
     REVISION_ANNOTATION,
 )
+from k8s.backend import ClusterError
+from k8s.kubernetes_backend import load_api_client, translate_errors
 
 
 class ClusterOperations(Protocol):

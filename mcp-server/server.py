@@ -9,13 +9,20 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from access import AccessPolicy, AuditLog, AuditMiddleware, AuthorizationMiddleware, SignedTokenVerifier
-from cluster import ClusterBackend, ClusterOperations, create_backend, create_operations
 from config import Settings, get_settings
 from constants import HEALTH_STATUS_OK, Scope, Toolset
-from observability import MetricsBackend, create_metrics_backend
-from resources import build_completion_handler, build_resources
-from tools import ToolDefinition, build_kubernetes_tools, build_observability_tools
-from tools.operations import build_operation_tools
+from k8s import (
+    ClusterBackend,
+    ClusterOperations,
+    build_completion_handler,
+    build_kubernetes_tools,
+    build_operation_tools,
+    build_resources,
+    create_backend,
+    create_operations,
+)
+from prometheus import MetricsBackend, build_prometheus_tools, create_metrics_backend
+from tool_helpers import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +43,7 @@ def create_server(
     if Toolset.KUBERNETES in settings.toolsets:
         add_kubernetes_toolset(server, cluster or create_backend(settings), settings, operations, policy)
     if Toolset.PROMETHEUS in settings.toolsets:
-        add_tools(server, build_observability_tools(metrics or create_metrics_backend(settings), settings))
+        add_tools(server, build_prometheus_tools(metrics or create_metrics_backend(settings), settings))
 
     @server.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:

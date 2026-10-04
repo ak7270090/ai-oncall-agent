@@ -13,17 +13,13 @@ from constants import (
     SERVICE_OVERVIEW_METRICS,
     MetricName,
 )
-from observability import MetricsBackend
-from observability.models import MetricSeries, ServiceOverview
-from tools.helpers import (
-    READ_ONLY_TOOL,
-    ToolDefinition,
-    namespace_guard,
-    query_progress_reporter,
-)
+from prometheus.backend import MetricsBackend
+from prometheus.helpers import query_progress_reporter
+from prometheus.models import MetricSeries, ServiceOverview
+from tool_helpers import READ_ONLY_TOOL, ToolDefinition, namespace_guard
 
 
-def build_observability_tools(backend: MetricsBackend, settings: Settings) -> list[ToolDefinition]:
+def build_prometheus_tools(backend: MetricsBackend, settings: Settings) -> list[ToolDefinition]:
     Namespace, require_allowed = namespace_guard(settings)
     ServiceName = Annotated[str, Field(pattern=NAME_PATTERN, description="Service name, e.g. payment-service")]
 

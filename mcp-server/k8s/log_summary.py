@@ -23,7 +23,6 @@ from mcp_types import (
     TextContent,
 )
 
-from cluster import ClusterBackend
 from config import Settings
 from constants import (
     LOG_SUMMARY_COST_PRIORITY,
@@ -31,6 +30,7 @@ from constants import (
     LOG_SUMMARY_SPEED_PRIORITY,
     LOG_SUMMARY_TASK,
 )
+from k8s import ClusterBackend
 
 LOG_SUMMARY_PROMPT = """You summarize Kubernetes pod logs for an on-call engineer.
 Write plain text, at most 12 lines:

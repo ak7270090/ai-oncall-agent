@@ -14,9 +14,9 @@ from typing import Any
 
 from mcp.server.mcpserver.exceptions import ResourceError
 
-from cluster import ClusterBackend
 from config import Settings
 from constants import DEPLOYMENT_SPEC_URI, NAME_PATTERN, RUNBOOK_URI, TOPOLOGY_URI
+from k8s import ClusterBackend
 
 
 @dataclass(frozen=True)

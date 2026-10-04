@@ -4,7 +4,7 @@ from typing import Protocol
 from mcp.server.mcpserver.exceptions import ToolError
 
 from constants import Metric
-from observability.models import MetricSample, ServiceHealth
+from prometheus.models import MetricSample, ServiceHealth
 
 
 class MetricsError(ToolError):
