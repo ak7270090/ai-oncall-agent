@@ -26,7 +26,7 @@ from mcp_client.langchain_tools import list_all_tools
 
 pytestmark = pytest.mark.anyio
 
-MCP_SERVER_DIR = Path(os.environ.get("MCP_SERVER_DIR", Path(__file__).parents[3] / "mcp-server"))
+MCP_SERVER_DIR = Path(os.environ.get("MCP_SERVER_DIR", Path(__file__).parents[3] / "mcp-platform" / "server"))
 VENV_PYTHON = MCP_SERVER_DIR / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
 HOST = "127.0.0.1"
 STARTUP_TIMEOUT_SECONDS = 20

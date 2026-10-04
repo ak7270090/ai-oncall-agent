@@ -11,7 +11,7 @@ services:
       PROMETHEUS_MCP_URL: http://prometheus-mcp-server:9000/mcp
       MCP_JWKS_PATH: /keys/jwks.json
     volumes:
-      - ./gateway/agentgateway.yaml:/config/agentgateway.yaml:ro
+      - ./mcp-platform/gateway/agentgateway.yaml:/config/agentgateway.yaml:ro
       - ./keys/jwks.json:/keys/jwks.json:ro
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-3000}:3000"

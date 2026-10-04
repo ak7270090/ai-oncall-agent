@@ -21,4 +21,4 @@ Please report it privately through GitHub: the repository's **Security** tab →
   the requester can't approve their own (four eyes).
 - **Audit log** of every tool call, linked to the agent's trace.
 
-See README "Who may do what" and "Two MCP servers and a gateway".
+Details: [docs/actions-and-security.md](./docs/actions-and-security.md).

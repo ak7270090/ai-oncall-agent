@@ -6,11 +6,11 @@ __pycache__/
 CLAUDE.md
 .claude/
 CONTRIBUTING.md
-kubernetes/base/secrets/*.env
-mcp-server/.kube/
+lab/kubernetes/base/*/secret.env
+mcp-platform/server/.kube/
 evals/results/
 docs/WALKTHROUGH.md
 docs/LINKEDIN_POSTS.md
-mcp-server/logs/
+mcp-platform/server/logs/
 keys/
-gateway/bin/
+mcp-platform/gateway/bin/

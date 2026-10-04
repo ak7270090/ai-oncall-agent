@@ -11,4 +11,4 @@ resources:
 configMapGenerator:
   - name: prometheus-config
     files:
-      - prometheus.yml=scrape-config.yml   # key = file name Prometheus reads
+      - prometheus.yml=scrape-config.yaml   # key = file name Prometheus reads

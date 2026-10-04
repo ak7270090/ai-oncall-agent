@@ -1,0 +1,9 @@
+# The MCP server's identities in the cluster: `mcp-server` (read-only, investigations)
+# and `mcp-operator` (approved changes). Applied by lab/kubernetes/base into the
+# namespace it sets; `make mcp-kubeconfig` writes their kubeconfigs.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - mcp-server.yaml
+  - mcp-operator.yaml

@@ -52,7 +52,7 @@ message.
 
 ## 4. App boundaries
 
-- `mcp-server/` and `ai-server/` never import each other. They meet only
+- `mcp-platform/server/` and `ai-server/` never import each other. They meet only
   through MCP over HTTP. Each has its own venv, requirements and settings.
 - Put infrastructure logic (Kubernetes, Prometheus) only in the MCP server, and
   LLM logic only in the AI server.
@@ -61,6 +61,20 @@ message.
 
 ## 5. Structure and reuse
 
+- The repository is organized by purpose: `ai-server/` (the agent), `mcp-platform/`
+  (`server/` and `gateway/`: the tool side of MCP), `lab/` (`services/` and
+  `kubernetes/`: the system the agent investigates), `evals/`, `docs/`. A new top-level
+  folder needs a purpose none of these has.
+- Kubernetes manifests follow Kustomize's base + overlays: `base/` holds one folder per
+  workload (`payment-service/{deployment,service,configmap}.yaml`, `secret.env`), never
+  folders per kind; `incidents/` are the overlays. A component's own manifests live with
+  it (`mcp-platform/server/deploy/`) and the base includes them.
+- Compose files use Docker's names: `compose.yaml`, overlays `compose.<purpose>.yaml`.
+- Every Python project has a `pyproject.toml` (project metadata, pytest settings, ruff
+  `extend` of the root `ruff.toml`); pinned dependencies stay in `requirements*.txt`
+  for the Dockerfiles.
+- The README says what the project is and how to run it; feature explanations go in
+  `docs/<topic>.md`.
 - Organize by **domain**, not by file type. A domain folder holds everything about one
   feature, in files with fixed names: `router.py` (HTTP routes), `schemas.py` (request
   and response models), `dependencies.py` (FastAPI dependencies), `constants.py`,
@@ -111,9 +125,9 @@ message.
 - Name files after their contents: `connection.py`, `collection_steps.py`,
   `mcp_toolbox.py`, not `misc.py`, `collection.py` or `signals.py`. A module name
   shouldn't repeat or collide with another layer's name: `mcp_client/langchain_tools.py`
-  (the MCP → LangChain adapter), not `mcp_client/tools.py` next to `mcp-server/tools/`.
+  (the MCP → LangChain adapter), not `mcp_client/tools.py` next to `mcp-platform/server/tools/`.
 - Files in the same folder never differ only by extension or a letter.
-  `prometheus-deployment.yaml` (Kubernetes manifest) and `scrape-config.yml`
+  `prometheus-deployment.yaml` (Kubernetes manifest) and `scrape-config.yaml`
   (Prometheus config), not `prometheus.yaml` and `prometheus.yml`. Kubernetes manifests
   are named after what they contain.
 - Keep fake implementations out of the real ones' files: each `MCP_BACKEND=fake` backend
@@ -213,7 +227,7 @@ message.
 
 ## 14. Kubernetes
 
-- All manifests go through kustomize (`kubernetes/base/kustomization.yaml`; incidents are overlays in `kubernetes/incidents/`). Add new
+- All manifests go through kustomize (`lab/kubernetes/base/kustomization.yaml`; incidents are overlays in `lab/kubernetes/incidents/`). Add new
   files to its `resources`.
 - Image tags live in the manifests and in the Makefile's `TAG` variable. Change
   both together.
@@ -236,7 +250,7 @@ message.
   Never rely on only one of them.
 - The MCP server authenticates as its own ServiceAccount with short-lived
   tokens (`make mcp-kubeconfig`), never with an admin kubeconfig.
-- A new tool needs its API permission added to `kubernetes/base/rbac/` in the same
+- A new tool needs its API permission added to `mcp-platform/server/deploy/` in the same
   change, with the narrowest verbs and resources that work.
 - Tools return typed pydantic models (they become the MCP output schema)
   containing only the fields an on-call engineer needs. Never return raw API
@@ -279,8 +293,8 @@ message.
 
 ## 17. Incidents and evals
 
-- Every incident is a kustomize overlay in `kubernetes/incidents/<name>`
-  on top of `kubernetes/base`. Never hand-edit a running cluster to set up a
+- Every incident is a kustomize overlay in `lab/kubernetes/incidents/<name>`
+  on top of `lab/kubernetes/base`. Never hand-edit a running cluster to set up a
   incident.
 - Fault-injection code in the sample services is switched on only by an explicit
   setting (`FAULT_MODE`), defaults to off, and is clearly labelled as such.
@@ -369,7 +383,7 @@ message.
 
 ## 22. Resources, annotations and the tool policy
 
-- Team knowledge (runbooks, service maps) lives in `mcp-server/knowledge/` and is
+- Team knowledge (runbooks, service maps) lives in `mcp-platform/server/knowledge/` and is
   published as resources, not hard-coded into prompts. Keep runbooks factual: real
   dependencies and the exact log messages the services write.
 - Resources are read-only and never expose secret values (env var names and

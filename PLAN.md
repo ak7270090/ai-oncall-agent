@@ -35,20 +35,20 @@ User ──► ai-server (FastAPI + LangGraph + LLM + MCP client)   evals/ (make
 
 | Phase | What was built | Where it lives |
 | --- | --- | --- |
-| 1 | MCP server with fake tools | `mcp-server/server.py`, `mcp-server/fake_incident.py`, `k8s/fake_*.py` |
+| 1 | MCP server with fake tools | `mcp-platform/server/server.py`, `mcp-platform/server/fake_incident.py`, `k8s/fake_*.py` |
 | 2 | AI server + MCP client | `ai-server/main.py`, `ai-server/mcp_client/` |
 | 3 | Streamable HTTP between the two apps | `mcp_client/connection.py`, `MCP_SERVER_URL` |
-| 4 | Docker | each app's `Dockerfile`, `docker-compose.yml` (`make up`) |
-| 5 | Local Kubernetes with three sample services | `kubernetes/base/`, `sample-services/` (`make cluster-up`) |
-| 6 | Real Kubernetes tools, read-only RBAC | `mcp-server/k8s/`, `kubernetes/base/rbac/` |
-| 7 | Prometheus + metrics tools | `kubernetes/monitoring/`, `mcp-server/prometheus/` |
+| 4 | Docker | each app's `Dockerfile`, `compose.yaml` (`make up`) |
+| 5 | Local Kubernetes with three sample services | `lab/kubernetes/base/`, `lab/services/` (`make cluster-up`) |
+| 6 | Real Kubernetes tools, read-only RBAC | `mcp-platform/server/k8s/`, `mcp-platform/server/deploy/` |
+| 7 | Prometheus + metrics tools | `lab/kubernetes/monitoring/`, `mcp-platform/server/prometheus/` |
 | 8 | LangGraph investigation (fixed checks + LLM reasoning) | `ai-server/agent/` |
-| 9 | Incident injection + graded eval | `kubernetes/incidents/`, `evals/` (`make incident`, `make eval`, `make replay`) |
+| 9 | Incident injection + graded eval | `lab/kubernetes/incidents/`, `evals/` (`make incident`, `make eval`, `make replay`) |
 | 10 | Agent metrics: covered by Langfuse dashboards (tokens, cost, latency per step and model) | Langfuse UI |
-| 11 | Tracing of every investigation | `ai-server/tracing/`, README "Tracing with Langfuse" |
-| 12 | Eval and replay runs as Langfuse experiments, scored per incident | `evals/experiment_tracking.py`, README "Comparing runs in Langfuse" |
+| 11 | Tracing of every investigation | `ai-server/tracing/`, docs/observability.md "Tracing with Langfuse" |
+| 12 | Eval and replay runs as Langfuse experiments, scored per incident | `evals/experiment_tracking.py`, docs/evals.md "Comparing runs in Langfuse" |
 | 15 | Live progress over Server-Sent Events, MCP progress, cancellation | `ai-server/investigation/events.py`, `POST /investigate/stream` |
-| 17 | MCP sampling for log summaries, model routing (strong / fast tier) | `mcp-server/k8s/log_summary.py`, `ai-server/llm/model_router.py` |
+| 17 | MCP sampling for log summaries, model routing (strong / fast tier) | `mcp-platform/server/k8s/log_summary.py`, `ai-server/llm/model_router.py` |
 | – | Computed findings (CPU-starved, slow now vs. recovered), parallel traffic | `investigation/evidence/analysis.py::computed_findings` |
 
 ## How every phase is done
@@ -159,7 +159,7 @@ pass the callbacks in `mcp_client/connection.py`.
 
 ### Phase 13 — Resources (done)
 
-Built as planned (README "Team knowledge as MCP resources"); the deployment spec also
+Built as planned (docs/mcp-features.md "Team knowledge as MCP resources"); the deployment spec also
 lists envFrom ConfigMaps/Secrets by name. Subscriptions were not built (no consumer
 yet). Measured (2026-10-04, two eval runs each vs. the two runs before): 6/6 and 6/6 with high
 confidence in both setups; +3 checks per incident (map + runbooks), about +4% strong-model
@@ -178,9 +178,9 @@ breaks, what's safe to do. Today that knowledge is scattered in prompts.
   it in the context. Resources can also be *subscribed to* for change notifications.
 
 **Build — mcp-server:**
-- `mcp-server/resources/` (new): `runbooks.py`, `topology.py`, `kubernetes.py`,
+- `mcp-platform/server/resources/` (new): `runbooks.py`, `topology.py`, `kubernetes.py`,
   registered in `server.py` next to the tools.
-- `runbook://{service}`: Markdown runbooks in `mcp-server/runbooks/<service>.md`
+- `runbook://{service}`: Markdown runbooks in `mcp-platform/server/runbooks/<service>.md`
   (dependencies, typical failures, how each shows up in logs and metrics, safe actions).
 - `topology://{namespace}`: which service calls which, as JSON. Read from a config
   file, cross-checked with the live Services.
@@ -228,7 +228,7 @@ them (often as slash commands), fills in the arguments and gets ready-made messa
 The server owner, who knows the infrastructure, writes them next to the tools.
 
 **Build — mcp-server:**
-- `mcp-server/prompts/` (new): `investigate_service(service, symptom)`,
+- `mcp-platform/server/prompts/` (new): `investigate_service(service, symptom)`,
   `explain_pod_failure(pod)`, `summarize_deployment_history(deployment)`.
 - Each prompt points at the right tools and resources (Phase 13) in the right order,
   e.g. "read `runbook://{service}`, then `get_service_overview`, then logs".
@@ -311,7 +311,7 @@ the server-side work.
 
 ### Phase 16 — Completions and tool annotations (done)
 
-Built (README "Tool annotations and completions"). Correction to the plan below: MCP
+Built (docs/mcp-features.md "Tool annotations and completions"). Correction to the plan below: MCP
 completions exist for resource-template and prompt arguments only, not for tool
 arguments, so they complete `runbook://{service}`, `topology://{namespace}` and
 `k8s://{namespace}/deployments/{name}`.
@@ -347,7 +347,7 @@ destructive tool is never bound to the LLM (fake MCP server with such a tool).
 
 ### Phase 17 — Sampling and model routing (done)
 
-Built as planned (README "Log summaries and model routing"). Measured on the kind
+Built as planned (docs/mcp-features.md "Log summaries and model routing"). Measured on the kind
 cluster: nano summaries let the agent read 200 instead of 50 log lines with 18% fewer
 strong-model input tokens at about the same total cost (4/6 → 5/6, one run each).
 Moving `write_report` to the fast model saved 40% but hurt the hardest incident, so it
@@ -449,7 +449,7 @@ routing across providers by live price or availability.
 
 ### Phase 18 — Write tools with human approval (elicitation) (done)
 
-Built (README "Changes with human approval"); endpoints are `POST /actions`,
+Built (docs/actions-and-security.md "Changes with human approval"); endpoints are `POST /actions`,
 `GET /actions/{id}`, `POST /actions/{id}/approval`. Verified live: rejected → unchanged,
 approved rollback → error rate 100% → 0%. The live test found a real bug: a strategic
 merge patch kept `FAULT_MODE=error` from the bad release; rollback now replaces the pod
@@ -503,7 +503,7 @@ rejected request changes nothing.
 
 ### Phase 19 — MCP authentication (done)
 
-Built (README "Who may do what"): the AI server mints a 60-second HS256 JWT per MCP HTTP
+Built (docs/actions-and-security.md "Who may do what"): the AI server mints a 60-second HS256 JWT per MCP HTTP
 request for the signed-in person (`sub`), naming the agent (`client_id`) and the scopes;
 the MCP server verifies it (`token_verifier`), answers 401 otherwise and publishes the
 protected resource metadata. Investigations get `k8s:read` only (write tools aren't even
@@ -583,7 +583,7 @@ finds no open item.
 
 ### Phase 22 — Two MCP servers (Kubernetes, Prometheus) and an MCP gateway (done)
 
-Built (README "Two MCP servers and a gateway"). One image runs as two servers (`MCP_TOOLSETS`); the AI server merges several servers (`McpServerGroup`) and maps a gateway's renamed tools (`k8s_…`) and resources (`k8s+…`) back; agentgateway v1.6.0 checks RS256 tokens (key pair from `make mcp-keys`) and coarse CEL rules, passing the token through. Spike checklist passed (tools, progress, sampling, elicitation, traceparent, 401, rules enforced before the server). Evals: direct 6/6; gateway 5/6 twice (first: resources hidden, a real finding; second: high-cpu's load had faded), then high-cpu + bad-deploy 2/2 in Docker. Overhead +1–4 ms per call. Found live: resources need their own CEL rule; Docker Host header without a port (421).
+Built (docs/actions-and-security.md "Two MCP servers and a gateway"). One image runs as two servers (`MCP_TOOLSETS`); the AI server merges several servers (`McpServerGroup`) and maps a gateway's renamed tools (`k8s_…`) and resources (`k8s+…`) back; agentgateway v1.6.0 checks RS256 tokens (key pair from `make mcp-keys`) and coarse CEL rules, passing the token through. Spike checklist passed (tools, progress, sampling, elicitation, traceparent, 401, rules enforced before the server). Evals: direct 6/6; gateway 5/6 twice (first: resources hidden, a real finding; second: high-cpu's load had faded), then high-cpu + bad-deploy 2/2 in Docker. Overhead +1–4 ms per call. Found live: resources need their own CEL rule; Docker Host header without a port (421).
 
 
 **Why:** real setups have many MCP servers, each owned by a team, each with its own
@@ -643,7 +643,7 @@ AI server ─┬─► k8s server :9000           AI server ──► agentgatew
 - Measure: `make eval` 6/6 as before (nothing about the reasoning changed).
 
 **Step 3 — agentgateway in front**
-- `gateway/agentgateway.yaml` + a compose service (pinned version ≥ v1.6.0). It
+- `mcp-platform/gateway/agentgateway.yaml` + a compose service (pinned version ≥ v1.6.0). It
   multiplexes both servers on `http://127.0.0.1:3000/mcp`; the AI server points only
   there (`MCP_SERVERS={"gateway": …}`).
 - Spike first (one hour, before moving anything), a checklist through the gateway:

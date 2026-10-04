@@ -8,13 +8,13 @@ x-healthcheck: &healthcheck
 
 # Both MCP servers run the mcp-server image; MCP_TOOLSETS decides which tools each serves.
 x-mcp-server: &mcp-server
-  build: ./mcp-server
+  build: ./mcp-platform/server
   image: ai-oncall-agent-mcp-server
   restart: unless-stopped
-  # MCP_USER_ROLES etc. (see mcp-server/.env.example; `make setup` creates it)
-  env_file: ./mcp-server/.env
+  # MCP_USER_ROLES etc. (see mcp-platform/server/.env.example; `make setup` creates it)
+  env_file: ./mcp-platform/server/.env
   volumes:
-    - ./mcp-server/logs:/app/logs
+    - ./mcp-platform/server/logs:/app/logs
   healthcheck:
     <<: *healthcheck
     test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health')"]
@@ -24,7 +24,7 @@ services:
     <<: *mcp-server
     environment:
       MCP_TOOLSETS: '["kubernetes"]'
-      MCP_AUTH_JWKS_PATH: ""   # MCP tokens: on with the gateway overlay (docker-compose.gateway.yml)
+      MCP_AUTH_JWKS_PATH: ""   # MCP tokens: on with the gateway overlay (compose.gateway.yaml)
       MCP_SERVER_NAME: oncall-k8s
       MCP_BACKEND: fake
       MCP_HOST: 0.0.0.0

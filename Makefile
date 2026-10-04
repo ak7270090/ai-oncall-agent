@@ -5,25 +5,25 @@ TAG             ?= v1
 ROLLOUT_TIMEOUT ?= 180s
 SMOKE_IMAGE     ?= curlimages/curl:8.10.1
 SERVICES        := user-service payment-service order-service
-BASE_DIR        := kubernetes/base
-SECRET_ENVS     := $(BASE_DIR)/secrets/payment-service.env $(BASE_DIR)/secrets/payments-db.env
+BASE_DIR        := lab/kubernetes/base
+SECRET_ENVS     := $(BASE_DIR)/payment-service/secret.env $(BASE_DIR)/payments-db/secret.env
 BAD_DEPLOY_TAG  ?= v2
-INCIDENTS       := $(notdir $(wildcard kubernetes/incidents/*))
-PYTHON_APPS     := mcp-server ai-server sample-services
+INCIDENTS       := $(notdir $(wildcard lab/kubernetes/incidents/*))
+PYTHON_APPS     := mcp-platform/server ai-server lab/services
 PYTHON          ?= $(if $(filter Windows_NT,$(OS)),python,python3)
 VENV_BIN        := $(if $(filter Windows_NT,$(OS)),Scripts,bin)
-MCP_KUBE_DIR    := mcp-server/.kube
+MCP_KUBE_DIR    := mcp-platform/server/.kube
 MCP_TOKEN_TTL   ?= 24h
 K8S_MCP_PORT    ?= 9000
 PROMETHEUS_MCP_PORT ?= 9001
 GATEWAY_PORT    ?= 3000
 GATEWAY_VERSION ?= v1.6.0
 GATEWAY_ASSET   := agentgateway-$(if $(filter Windows_NT,$(OS)),windows-amd64.exe,$(if $(filter Darwin,$(shell uname -s)),darwin-arm64,linux-amd64))
-GATEWAY_BIN     := gateway/bin/$(GATEWAY_VERSION)-$(GATEWAY_ASSET)
+GATEWAY_BIN     := mcp-platform/gateway/bin/$(GATEWAY_VERSION)-$(GATEWAY_ASSET)
 KEYS_DIR        := keys
 KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
-COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f docker-compose.yml -f docker-compose.kind.yml
-COMPOSE_GATEWAY := $(COMPOSE_KIND) -f docker-compose.gateway.yml
+COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f compose.yaml -f compose.kind.yaml
+COMPOSE_GATEWAY := $(COMPOSE_KIND) -f compose.gateway.yaml
 
 .PHONY: images redeploy help setup run-mcp-server run-mcp-servers run-gateway mcp-keys up-kind-gateway run-ai-server up up-kind down logs test lint cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
 
@@ -58,13 +58,13 @@ setup:
 		$$app/.venv/$(VENV_BIN)/python -m pip install -q -r $$app/requirements-dev.txt || exit 1; \
 	done
 	test -f ai-server/.env || cp ai-server/.env.example ai-server/.env
-	test -f mcp-server/.env || cp mcp-server/.env.example mcp-server/.env
+	test -f mcp-platform/server/.env || cp mcp-platform/server/.env.example mcp-platform/server/.env
 
 run-mcp-server:
-	cd mcp-server && .venv/$(VENV_BIN)/python server.py
+	cd mcp-platform/server && .venv/$(VENV_BIN)/python server.py
 
 run-mcp-servers:
-	cd mcp-server && trap 'kill 0' INT TERM EXIT; \
+	cd mcp-platform/server && trap 'kill 0' INT TERM EXIT; \
 	MCP_TOOLSETS='["kubernetes"]' MCP_SERVER_NAME=oncall-k8s MCP_PORT=$(K8S_MCP_PORT) \
 		MCP_PUBLIC_URL=http://127.0.0.1:$(K8S_MCP_PORT)/mcp .venv/$(VENV_BIN)/python server.py & \
 	MCP_TOOLSETS='["prometheus"]' MCP_SERVER_NAME=oncall-prometheus MCP_PORT=$(PROMETHEUS_MCP_PORT) \
@@ -77,7 +77,7 @@ mcp-keys:
 
 # The agentgateway release binary, checked against its published SHA-256.
 $(GATEWAY_BIN):
-	mkdir -p gateway/bin
+	mkdir -p mcp-platform/gateway/bin
 	url=https://github.com/agentgateway/agentgateway/releases/download/$(GATEWAY_VERSION)/$(GATEWAY_ASSET) && \
 	curl -sfL $$url -o $@.download && expected=$$(curl -sfL $$url.sha256 | cut -d' ' -f1) && \
 	actual=$$(sha256sum $@.download | cut -d' ' -f1) && \
@@ -86,7 +86,7 @@ $(GATEWAY_BIN):
 
 run-gateway: $(GATEWAY_BIN)
 	K8S_MCP_URL=http://127.0.0.1:$(K8S_MCP_PORT)/mcp PROMETHEUS_MCP_URL=http://127.0.0.1:$(PROMETHEUS_MCP_PORT)/mcp \
-	MCP_JWKS_PATH=$(CURDIR)/$(KEYS_DIR)/jwks.json $(GATEWAY_BIN) -f gateway/agentgateway.yaml
+	MCP_JWKS_PATH=$(CURDIR)/$(KEYS_DIR)/jwks.json $(GATEWAY_BIN) -f mcp-platform/gateway/agentgateway.yaml
 
 up-kind-gateway: mcp-kubeconfig
 	test -f $(KEYS_DIR)/jwks.json || $(MAKE) mcp-keys
@@ -108,18 +108,18 @@ logs:
 	docker compose logs -f
 
 test:
-	cd mcp-server && .venv/$(VENV_BIN)/python -m pytest -q
+	cd mcp-platform/server && .venv/$(VENV_BIN)/python -m pytest -q
 	cd ai-server && .venv/$(VENV_BIN)/python -m pytest -q
-	for svc in $(SERVICES); do (cd sample-services/$$svc && ../.venv/$(VENV_BIN)/python -m pytest -q) || exit 1; done
+	for svc in $(SERVICES); do (cd lab/services/$$svc && ../.venv/$(VENV_BIN)/python -m pytest -q) || exit 1; done
 
 lint:
 	ai-server/.venv/$(VENV_BIN)/python -m ruff check .
 
 cluster-up: $(SECRET_ENVS)
-	kind get clusters | grep -qx $(CLUSTER) || kind create cluster --name $(CLUSTER) --config kubernetes/kind-cluster.yaml
+	kind get clusters | grep -qx $(CLUSTER) || kind create cluster --name $(CLUSTER) --config lab/kubernetes/kind-cluster.yaml
 	kubectl config use-context kind-$(CLUSTER)
 	$(MAKE) images
-	kubectl apply -k kubernetes/monitoring
+	kubectl apply -k lab/kubernetes/monitoring
 	kubectl apply -k $(BASE_DIR)
 	kubectl wait deployment --all -n $(NAMESPACE) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
 	kubectl wait deployment --all -n $(MONITORING_NS) --for=condition=Available --timeout=$(ROLLOUT_TIMEOUT)
@@ -129,7 +129,7 @@ cluster-up: $(SECRET_ENVS)
 
 images:
 	for svc in $(SERVICES); do \
-		docker build -q -t $$svc:$(TAG) sample-services/$$svc && \
+		docker build -q -t $$svc:$(TAG) lab/services/$$svc && \
 		kind load docker-image $$svc:$(TAG) --name $(CLUSTER) || exit 1; \
 	done
 	# The bad-deploy incident's "new version": same code, FAULT_MODE set by the incident patch.
@@ -173,7 +173,7 @@ smoke-test:
 
 incident:
 	@test -n "$(NAME)" || (echo "usage: make incident NAME=<$(INCIDENTS)>" && exit 1)
-	kubectl apply -k kubernetes/incidents/$(NAME)
+	kubectl apply -k lab/kubernetes/incidents/$(NAME)
 
 incident-reset:
 	kubectl apply -k $(BASE_DIR)
@@ -186,7 +186,7 @@ replay:
 	cd ai-server && .venv/$(VENV_BIN)/python ../evals/replay.py $(if $(RUN),--run ../$(RUN)) $(if $(NAME),--only $(NAME)) $(if $(TIMES),--times $(TIMES))
 
 audit:
-	cd mcp-server && .venv/$(VENV_BIN)/python -m access.audit_report $(if $(DEPLOYMENT),--deployment $(DEPLOYMENT)) $(if $(SINCE),--since-hours $(SINCE)) $(if $(ALL),--all)
+	cd mcp-platform/server && .venv/$(VENV_BIN)/python -m access.audit_report $(if $(DEPLOYMENT),--deployment $(DEPLOYMENT)) $(if $(SINCE),--since-hours $(SINCE)) $(if $(ALL),--all)
 
 new-secret:
 	@$(PYTHON) -c "import secrets; print(secrets.token_urlsafe(32))"

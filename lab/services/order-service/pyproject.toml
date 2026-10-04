@@ -1,0 +1,14 @@
+[project]
+name = "order-service"
+version = "1.0.0"
+description = "Sample service: places orders via user- and payment-service (the lab's system under test)."
+requires-python = ">=3.11"
+# Pinned dependencies: requirements.txt; test tools: ../requirements-dev.txt.
+
+[tool.ruff]
+extend = "../../../ruff.toml"
+src = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

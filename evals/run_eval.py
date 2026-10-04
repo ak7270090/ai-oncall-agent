@@ -102,7 +102,7 @@ def wait_until(check, timeout: float, what: str) -> None:
 
 
 def reset_and_wait_healthy() -> None:
-    kubectl("apply", "-k", str(REPO_ROOT / "kubernetes" / "base"))
+    kubectl("apply", "-k", str(REPO_ROOT / "lab" / "kubernetes" / "base"))
     kubectl("wait", "deployment", "--all", "-n", NAMESPACE, "--for=condition=Available", "--timeout=300s")
     wait_until(lambda: all(is_condition_met(c) for c in HEALTHY), HEALTHY_TIMEOUT_SECONDS, "a healthy cluster")
 
@@ -133,7 +133,7 @@ def run_incident(incident: IncidentCase, tracker: ExperimentTracker) -> Result:
     expected = f"{incident.expected_category} / {incident.expected_service}"
     started = time.monotonic()
     try:
-        kubectl("apply", "-k", str(REPO_ROOT / "kubernetes" / "incidents" / incident.name))
+        kubectl("apply", "-k", str(REPO_ROOT / "lab" / "kubernetes" / "incidents" / incident.name))
         wait_until(lambda: is_condition_met(incident.symptom), SYMPTOM_TIMEOUT_SECONDS, f"{incident.name} symptom")
         time.sleep(SYMPTOM_SETTLE_SECONDS)
         started = time.monotonic()

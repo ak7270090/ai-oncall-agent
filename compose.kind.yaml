@@ -9,8 +9,8 @@ services:
       MCP_KUBECONFIG_PATH: /app/.kube/config
       MCP_OPERATOR_KUBECONFIG_PATH: /app/.kube/operator-config
     volumes:
-      - ./mcp-server/.kube/config.internal:/app/.kube/config:ro
-      - ./mcp-server/.kube/operator-config.internal:/app/.kube/operator-config:ro
+      - ./mcp-platform/server/.kube/config.internal:/app/.kube/config:ro
+      - ./mcp-platform/server/.kube/operator-config.internal:/app/.kube/operator-config:ro
     networks: [default, kind]
 
   prometheus-mcp-server:
