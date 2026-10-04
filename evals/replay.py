@@ -19,14 +19,6 @@ EVALS_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = EVALS_DIR / "results"
 sys.path.insert(0, str(EVALS_DIR.parent / "ai-server"))
 
-from experiment_tracking import (  # noqa: E402
-    ExperimentTracker,
-    current_traceparent,
-    normalized_service,
-    use_safe_event_loop,
-)
-from incident_cases import INCIDENT_CASES, IncidentCase  # noqa: E402
-
 from config import get_settings  # noqa: E402
 from investigation.evidence.analysis import computed_findings  # noqa: E402
 from investigation.models import Evidence, IncidentScope  # noqa: E402
@@ -34,6 +26,14 @@ from investigation.service import reanalyze_evidence  # noqa: E402
 from llm.model_router import create_model_router  # noqa: E402
 from mcp_client.constants import McpOperation  # noqa: E402
 from tracing import InvestigationTracer, TraceLabels, create_tracer  # noqa: E402
+
+from experiment_tracking import (  # noqa: E402
+    ExperimentTracker,
+    current_traceparent,
+    normalized_service,
+    use_safe_event_loop,
+)
+from incident_cases import INCIDENT_CASES, IncidentCase  # noqa: E402
 
 INCIDENT_CASES_BY_NAME = {s.name: s for s in INCIDENT_CASES}
 

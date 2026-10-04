@@ -1,0 +1,15 @@
+[project]
+name = "oncall-ai-server"
+version = "0.22.0"
+description = "Investigates incidents over MCP: FastAPI API, LangGraph agent, approvals for changes."
+requires-python = ">=3.11"
+# Pinned dependencies: requirements.txt (runtime, used by the Dockerfile) and
+# requirements-dev.txt (tests and lint).
+
+[tool.ruff]
+extend = "../ruff.toml"
+src = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

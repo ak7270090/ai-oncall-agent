@@ -67,6 +67,7 @@ def test_slow_upstream_call_is_logged_with_its_url(use_downstream, caplog, monke
 
 def test_probe_and_scrape_requests_are_kept_out_of_the_access_log():
     import logging
+
     from main import ProbeAccessLogFilter
     def record(message: str) -> logging.LogRecord:
         return logging.LogRecord("uvicorn.access", logging.INFO, "", 0, message, None, None)

@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field
+
 from settings import get_settings
 
 

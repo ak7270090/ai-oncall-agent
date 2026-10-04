@@ -5,6 +5,6 @@ __pycache__/
 tests/
 .env
 requirements-dev.txt
-pytest.ini
+pyproject.toml
 .kube/
 logs/

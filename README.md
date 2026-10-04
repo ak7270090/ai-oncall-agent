@@ -1,8 +1,12 @@
 # AI On-Call Agent (MCP)
 
+[![CI](https://github.com/ak7270090/ai-oncall-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ak7270090/ai-oncall-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 An AI on-call assistant that investigates incidents through the Model Context
-Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–9 are done.**
-Code rules are in [CODING_GUIDELINES.md](./CODING_GUIDELINES.md).
+Protocol. See [PLAN.md](./PLAN.md) for the roadmap. **Phases 1–13, 15–20 and 22 are
+done.** Code rules are in [CODING_GUIDELINES.md](./CODING_GUIDELINES.md); security
+notes in [SECURITY.md](./SECURITY.md).
 
 ```text
  User ──HTTP──► AI server :8000 ──MCP / Streamable HTTP──► MCP server :9000 ──read-only──► kind cluster (shop)
@@ -61,7 +65,11 @@ ai-oncall-agent/
 ├── docker-compose.kind.yml  overlay: the MCP servers read the kind cluster
 ├── docker-compose.gateway.yml  overlay: both MCP servers behind agentgateway, tokens on
 ├── Makefile               every command: make help
-└── CODING_GUIDELINES.md
+├── ruff.toml              lint rules; each app's pyproject.toml extends them (and holds pytest settings)
+├── .github/workflows/     ci.yml: lint + tests on every push
+├── CODING_GUIDELINES.md
+├── SECURITY.md
+└── LICENSE                MIT
 ```
 
 Each service folder has its own Dockerfile.
@@ -91,11 +99,12 @@ Everything runs through the `Makefile`; `make help` lists the targets:
 
 | Command | What it does |
 | --- | --- |
-| `make setup` | Virtualenv + dependencies for each app, creates `ai-server/.env` |
+| `make setup` | Virtualenv + dependencies for each app, creates `ai-server/.env` and `mcp-server/.env` |
 | `make run-mcp-server` / `make run-ai-server` | Run the apps locally (no Docker) |
 | `make up` / `make down` / `make logs` | AI server + MCP server in Docker Compose (fake cluster data) |
 | `make up-kind` | Same, but the MCP server reads the kind cluster |
 | `make test` | Every test suite (cluster tests run only if the kind cluster is up) |
+| `make lint` | Ruff over the whole repository (rules in `ruff.toml`); CI runs it and the tests on every push |
 | `make cluster-up` / `make smoke-test` / `make cluster-down` | Kind cluster with the sample services |
 | `make redeploy` | Rebuild the sample-service images and restart them in the cluster |
 | `make mcp-kubeconfig` | Fresh short-lived, read-only credentials for the MCP server |
@@ -814,3 +823,7 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 | Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`llm/sampling.py`). |
 | Authorization | Bearer tokens checked by `MCPServer(token_verifier=…)` with `AuthSettings` (401 + protected resource metadata); scopes and roles enforced by server middleware (`MCPServer(middleware=[…])`). |
 | Host / client | The AI server is the host. `mcp.Client` is the client. |
+
+## License
+
+MIT, see [LICENSE](./LICENSE).

@@ -1,0 +1,15 @@
+[project]
+name = "oncall-mcp-server"
+version = "0.22.0"
+description = "MCP server with Kubernetes and Prometheus tool sets, approvals, roles and an audit log."
+requires-python = ">=3.11"
+# Pinned dependencies: requirements.txt (runtime, used by the Dockerfile) and
+# requirements-dev.txt (tests and lint).
+
+[tool.ruff]
+extend = "../ruff.toml"
+src = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

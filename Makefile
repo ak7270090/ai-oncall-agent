@@ -25,7 +25,7 @@ KIND_API_INTERNAL = https://$(CLUSTER)-control-plane:6443
 COMPOSE_KIND    := CLUSTER=$(CLUSTER) docker compose -f docker-compose.yml -f docker-compose.kind.yml
 COMPOSE_GATEWAY := $(COMPOSE_KIND) -f docker-compose.gateway.yml
 
-.PHONY: images redeploy help setup run-mcp-server run-mcp-servers run-gateway mcp-keys up-kind-gateway run-ai-server up up-kind down logs test cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
+.PHONY: images redeploy help setup run-mcp-server run-mcp-servers run-gateway mcp-keys up-kind-gateway run-ai-server up up-kind down logs test lint cluster-up cluster-down smoke-test mcp-kubeconfig incident incident-reset eval replay audit new-secret
 
 help:
 	@echo "setup               create a virtualenv per app, install deps, create ai-server/.env"
@@ -38,6 +38,7 @@ help:
 	@echo "up / down / logs    AI server + MCP server with docker compose (fake cluster data)"
 	@echo "up-kind             same, but the MCP server reads the kind cluster"
 	@echo "test                run every test suite"
+	@echo "lint                ruff over the whole repository (rules in ruff.toml)"
 	@echo "cluster-up          kind cluster: sample services + traffic ($(NAMESPACE)), Prometheus on :9090 ($(MONITORING_NS))"
 	@echo "redeploy            rebuild sample-service images and restart them in the cluster"
 	@echo "smoke-test          place an order through order-service inside the cluster"
@@ -110,6 +111,9 @@ test:
 	cd mcp-server && .venv/$(VENV_BIN)/python -m pytest -q
 	cd ai-server && .venv/$(VENV_BIN)/python -m pytest -q
 	for svc in $(SERVICES); do (cd sample-services/$$svc && ../.venv/$(VENV_BIN)/python -m pytest -q) || exit 1; done
+
+lint:
+	ai-server/.venv/$(VENV_BIN)/python -m ruff check .
 
 cluster-up: $(SECRET_ENVS)
 	kind get clusters | grep -qx $(CLUSTER) || kind create cluster --name $(CLUSTER) --config kubernetes/kind-cluster.yaml

@@ -21,11 +21,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from incident_cases import IncidentCase
+from config import Settings, get_settings
 from langfuse import Evaluation, Langfuse
 from opentelemetry import trace as otel_trace
 
-from config import Settings, get_settings
+from incident_cases import IncidentCase
 
 DATASET_NAME = "oncall-incidents"
 REPO_ROOT = Path(__file__).resolve().parent.parent

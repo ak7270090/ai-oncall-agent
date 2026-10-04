@@ -1,0 +1,72 @@
+# Lint and tests on every push to main and every pull request. No cluster, LLM or
+# Langfuse here: tests use fakes; the cluster tests skip themselves without kind.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ruff==0.16.10
+      - run: ruff check .
+
+  mcp-server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: mcp-server/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
+  ai-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            ai-server/requirements*.txt
+            mcp-server/requirements.txt
+      # The integration tests start the real MCP server from its own virtualenv.
+      - run: python -m venv mcp-server/.venv && mcp-server/.venv/bin/pip install -r mcp-server/requirements.txt
+      - run: pip install -r ai-server/requirements-dev.txt
+      - run: pytest -q
+        working-directory: ai-server
+
+  sample-services:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sample-services
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: sample-services/**/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: for service in user-service payment-service order-service; do (cd $service && pytest -q) || exit 1; done

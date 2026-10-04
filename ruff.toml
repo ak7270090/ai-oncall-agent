@@ -1,0 +1,11 @@
+# Lint rules for the whole repository (`make lint`). ai-server/ and mcp-server/ extend
+# this in their pyproject.toml, so their own modules count as first-party imports.
+line-length = 130
+target-version = "py311"
+extend-exclude = ["evals/results"]
+# Where first-party modules live: each sample service and the eval scripts are their own root.
+src = [".", "sample-services/*", "evals"]
+
+[lint]
+# E9: syntax errors, F: pyflakes (unused or undefined names), I: import order.
+select = ["E9", "F", "I"]
