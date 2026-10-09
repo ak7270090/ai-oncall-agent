@@ -1,85 +1,91 @@
 # Changes, security and the gateway
 
-Approved changes, sign-in, roles, four eyes, the audit log, and the MCP gateway.
+An agent that only reads is helpful. An agent that can also *fix* things is much more helpful, and
+much scarier. This page covers how the agent is allowed to change production without anyone
+losing sleep: a human approves every change, a second person signs off, everyone signs in, and
+every action is written down.
 
-## Changes with human approval (Phase 18)
+## Fixes need a human's approval
 
-The agent can now **propose** fixes; a human **approves** each one before anything
-changes. The investigation itself never changes the cluster.
+The agent can **suggest** a fix in its report, for example "roll payment-service back to
+revision 1". It can't run it on its own. Running it goes like this:
+
+1. Someone asks for the fix (`POST /actions`).
+2. The MCP server checks that the fix makes sense: the deployment exists, the revision exists,
+   the replica count is within limits.
+3. The server **stops and asks a human**: "Roll back deployment payment-service in shop to
+   revision 1 (image payment-service:v1)?"
+4. A person approves or rejects it, with a reason.
+5. If approved, the change is made. If it's rejected, declined, or nobody answers in time,
+   nothing changes, and the result says so.
 
 ```text
 POST /investigate  → report.proposed_actions: [{"operation": "rollback_deployment",
                       "deployment": "payment-service", "revision": 1, "reason": "..."}]
 POST /actions {"action": <one proposed action>}         → {"id": "53c3…", "status": "starting"}
-GET  /actions/53c3…  → {"status": "awaiting_approval",
-                        "question": "Roll back deployment payment-service in shop to revision 1
-                                     (image payment-service:v1)?"}
+GET  /actions/53c3…  → {"status": "awaiting_approval", "question": "Roll back deployment payment-service ...?"}
 POST /actions/53c3…/approval {"approve": true, "reason": "v2 breaks payments"}
 GET  /actions/53c3…  → {"status": "done", "result": {"detail": "Rolled back deployment ..."}}
 ```
 
-- **Write tools** (`mcp-platform/server/k8s/deployments.py`, off unless `MCP_ENABLE_WRITE_TOOLS=true`):
-  `restart_deployment`, `scale_deployment` (0–`MCP_MAX_REPLICAS`), `rollback_deployment`,
-  annotated `destructiveHint=true`, so the investigating agent never gets them (Phase 16).
-- **Approval = MCP elicitation:** each tool first checks its arguments (deployment exists,
-  revision exists, replicas in bounds), then asks the client: "Roll back … to revision 1
-  (image …)?" with `approve` + `reason`. Approved → the change is made; rejected,
-  declined, cancelled or no answer → nothing changes, and the result says so. A client
-  that can't ask a human can't trigger a change at all.
-- **The waiting** (`ai-server/actions/`): `POST /actions` returns at once; the action waits
-  in `awaiting_approval` until `POST /actions/{id}/approval` or `APPROVAL_TIMEOUT_SECONDS`.
-  With protocol 2026-07-28 the server returns "input required" and holds no connection
-  while a human thinks. State is in memory (one AI server process).
-- **Separate permissions:** the write tools use the `mcp-operator` ServiceAccount (patch
-  Deployments and their scale, read ReplicaSets, in `shop` only;
-  `mcp-platform/server/deploy/mcp-operator.yaml`). `make mcp-kubeconfig` writes its kubeconfig.
-  The read-only `mcp-server` account still can't change anything.
-- **Rollback** replaces the Deployment's pod template with the target revision's (JSON
-  Patch), like `kubectl rollout undo`.
-- The eval grades proposed fixes (`action` column, Langfuse score `action_correct`) for the
-  incidents with an obvious one: payment-down and db-down → scale back up, bad-deploy →
-  roll back.
+The question in step 3 is MCP **elicitation**: the server asking the client for input from a
+human. Because the server asks, a client that can't reach a human can't make a change at all.
 
-Verified on the kind cluster: bad-deploy → the agent proposed "roll back payment-service to
-revision 1" → rejected: nothing changed → approved: rolled back, error rate 100% → 0%.
-Eval (two runs): diagnoses 6/6 twice; proposed fixes 3/3 and 2/3 (once the agent proposed
-nothing for payment-down, hedging that 0 replicas might be intended).
+What the agent can change, and nothing else:
 
-## Who may do what: sign-in, roles and the audit log (Phases 19–20)
+| Tool | What it does |
+| --- | --- |
+| `restart_deployment` | Restarts all pods of a deployment |
+| `scale_deployment` | Sets the number of pods (between 0 and `MCP_MAX_REPLICAS`) |
+| `rollback_deployment` | Goes back to an earlier version, like `kubectl rollout undo` |
 
-Until now anyone who could reach port 9000 could call every tool, and the approval of a
-change was just a click. Now every request says **who** is asking, roles decide **what**
-they may do, and every tool call lands in an **audit log**.
+These tools are off unless `MCP_ENABLE_WRITE_TOOLS=true`, they're labelled destructive so the
+investigating agent never sees them, and they run under a **separate Kubernetes account** that may
+only patch deployments in `shop`. The read-only account still can't change anything.
+
+The eval also grades the suggested fixes: for payment-down and db-down the right fix is to scale
+back up, and for bad-deploy it's a rollback.
+
+**In the code:** `mcp-platform/server/k8s/deployments.py` (the tools and the approval question),
+`ai-server/actions/` (waiting for the approval), `mcp-platform/server/deploy/mcp-operator.yaml`
+(the separate account).
+
+## Who may do what
+
+Before this, anyone who could reach the MCP server could call any tool, and approving a change was
+just a click anyone could make. Now every request says **who** is asking, their role decides
+**what** they may do, and everything lands in an **audit log**.
 
 ```text
-person --X-API-Key--> AI server --Bearer JWT (sub=aman, client_id=oncall-ai-server,
-                                   scope="k8s:read k8s:write", 60 s)--> MCP server
-                                                                         ├ 401 without a valid token
-                                                                         ├ roles: may aman call this?
-                                                                         └ audit log (who, what, approval, trace)
+person ──API key──► AI server ──signed token: "this is aman, may read + write, valid 60 s"──► gateway ──► MCP server
+                                                                                                ├ 401 without a valid token
+                                                                                                ├ is aman's role allowed this tool?
+                                                                                                └ audit log: who, what, approved by whom, trace
 ```
 
-- **Sign-in to the AI server:** `API_KEYS` maps API keys (`X-API-Key` header) to people.
-  Everything except `/health` and `/ready` needs one. Empty = sign-in off (local dev only).
-- **MCP authentication (OAuth bearer tokens):** for every HTTP request to the MCP server
-  the AI server mints a short-lived JWT for the signed-in person, signed with its
-  private key (`MCP_TOKEN_PRIVATE_KEY_PATH`; RS256 since Phase 22, HS256 before) and
-  checked with the public JWKS (`MCP_AUTH_JWKS_PATH`, `make mcp-keys`). The MCP server
-  (`MCPServer(token_verifier=…, auth=AuthSettings(…))`, `mcp-platform/server/auth/tokens.py`)
-  answers 401 without a valid one and publishes OAuth protected resource metadata at
-  `/.well-known/oauth-protected-resource/mcp`.
-- **Scopes:** investigations get `k8s:read`, so the MCP server doesn't even list the write
-  tools to them; `POST /actions` gets `k8s:read k8s:write`.
-- **Roles** (`MCP_USER_ROLES`, `MCP_ROLE_WRITE_TOOLS`): every role may read; `developer`
-  no write tools, `oncall` restart and scale, `lead` also roll back. A server middleware
-  (`mcp-platform/server/auth/roles.py`) refuses before the tool runs.
-- **Four eyes:** the person who starts an action can't approve it (403 at the AI server),
-  and the MCP server checks again: the approver named in the elicitation answer must be
-  someone else whose role may run that tool.
-- **Audit log** (one per MCP server, `logs/audit-k8s.jsonl`, JSON lines, append-only): every tool call with
-  person, agent, arguments, outcome, approval (requested by, approved by, reason) and the
-  Langfuse trace id that the MCP client sends in `_meta.traceparent`. Each action is its
-  own Langfuse trace, tagged with the user.
+- **Signing in.** Every person has an API key (`X-API-Key` header). Everything except `/health` and
+  `/ready` needs one. With no keys configured, sign-in is off, which is for local development only.
+- **Tokens to the MCP servers.** For every request, the AI server creates a short-lived token (60
+  seconds) saying who the signed-in person is and what they may do, signed with a private key.
+  The gateway and the servers check it with the matching public key. Without a valid token the
+  answer is 401.
+- **Scopes.** An investigation's token only allows reading, so the write tools don't even appear
+  in its tool list. Only `POST /actions` gets a token that allows writing.
+- **Roles.** Everyone may read. Beyond that:
+
+  | Role | May also |
+  | --- | --- |
+  | `developer` | nothing (read only) |
+  | `oncall` | restart and scale |
+  | `lead` | restart, scale and roll back |
+
+- **Four eyes.** The person who asks for a change can't approve it. The AI server refuses that
+  with a 403, and the MCP server checks again: the approver must be someone else whose role allows
+  that tool.
+- **Audit log.** Every tool call is written to an append-only file, one per MCP server: who asked,
+  through which agent, with what arguments, what happened, who approved it and why, and a link to
+  the Langfuse trace. So "who rolled back payment-service at 2 a.m., and why?" has a one-line
+  answer.
 
 ```text
 $ make audit DEPLOYMENT=payment-service SINCE=24
@@ -90,55 +96,72 @@ $ make audit DEPLOYMENT=payment-service SINCE=24
     trace: https://cloud.langfuse.com/project/<project>/traces/939a4752684ff891ec3a3bf20e4008d7
 ```
 
-Setup: `make mcp-keys` for the token key pair and `make new-secret` for each API key;
-key paths and `API_KEYS` in `ai-server/.env`, the JWKS path and `MCP_USER_ROLES` in
-`mcp-platform/server/.env`; `EVAL_API_KEY=<key> make eval`.
+Here's the whole flow from the real demo: the request, the approval question, the requester's own
+approval refused, a second person approving it, and the audit entry.
 
-Verified on the kind cluster (bad-deploy): a developer's investigation proposed the
-rollback; the oncall user was refused; the lead who started it couldn't approve it
-(403); an oncall approver was refused by the MCP server; a second lead's approval rolled
-it back (error rate → 0). `make audit` showed all of it with the trace links.
+<p align="center"><img src="images/demo-approval.png" alt="Approval flow: rollback requested, the MCP server asks for approval, the requester's own approval is refused with 403, a second lead approves, the rollback is done, and the audit log records it" width="100%"></p>
 
-## Two MCP servers behind a gateway (Phase 22)
+**Setup:** `make mcp-keys` creates the token key pair, and `make new-secret` creates each API key.
+Put the key paths and `API_KEYS` in `ai-server/.env`, and the roles (`MCP_USER_ROLES`) in
+`mcp-platform/server/.env`. For evals: `EVAL_API_KEY=<key> make eval`.
 
-The tool side of MCP is **two servers** (`mcp-platform/server/`), each with its own entry
-point, and **agentgateway** in front of them. The gateway is mandatory: the AI server
-knows only the gateway's URL, and the MCP servers aren't reachable otherwise in Docker.
+**Tested on the kind cluster:** a developer's investigation suggested the rollback; the on-call
+user wasn't allowed to run it; the lead who asked for it couldn't approve it (403); an on-call
+approver was refused by the MCP server; a second lead's approval rolled it back, and the error
+rate went to 0. `make audit` showed all of it, with trace links.
+
+**In the code:** `ai-server/auth/` (API keys, tokens), `mcp-platform/server/auth/` (token check,
+roles, four eyes), `mcp-platform/server/audit/` (the log and `make audit`).
+
+## Two MCP servers behind a gateway
+
+The tools are split across **two MCP servers**, one for Kubernetes and one for Prometheus, with a
+**gateway** in front of them. The agent only knows one address: the gateway's.
 
 ```text
-AI server ──► agentgateway :3000 ─┬─► Kubernetes MCP server :9000   python -m k8s.server
- (one URL)    token check,        │     pods, deployments, events, runbooks, write tools
-              which tools a token └─► Prometheus MCP server :9001   python -m prometheus.server
-              may reach                 service overview, metrics
+AI server ──► agentgateway :3000 ─┬─► Kubernetes MCP server :9000
+ (one URL)    checks the token,   │     pods, deployments, events, runbooks, fixes
+              decides which tools └─► Prometheus MCP server :9001
+              a token may reach         service overview, metrics
 ```
 
-- **Two servers, one codebase:** `k8s/server.py` and `prometheus/server.py` each build
-  their server on `base_server.py` (token check, audit and role middleware, `/health`)
-  and add only their own tools and backends: the Prometheus server holds no Kubernetes
-  credentials. Each has its own name, port and audit log (`MCP_K8S_SERVER__PORT`, …).
-- **Who checks what:**
+**Why split them?** Each server holds only the access it needs. The Prometheus server has no
+Kubernetes credentials at all, so a problem there can't touch the cluster. Each has its own port,
+name and audit log, and both are built from the same shared base (token check, audit log, roles,
+health check).
 
-  | | Gateway | MCP servers |
-  | --- | --- | --- |
-  | Token valid? (401 otherwise) | yes | yes again: they learn the person from it |
-  | Which tools a token may reach (read vs write scope) | yes (CEL rules) | no |
-  | Roles, four eyes (approver ≠ requester, approver's role) | no | yes: needs the role map and the tool's approval answer |
-  | Audit log | access log | every call, approval and outcome, with the trace id |
+**Why a gateway?** One front door is easier to secure than many:
 
-- **The gateway** (`mcp-platform/gateway/agentgateway.yaml`, agentgateway v1.6.0):
-  multiplexes both servers on one URL. Tool names get the target as prefix
-  (`k8s_list_pods`, `k8s+runbook://…`), which the AI server maps back
-  (`MCP_GATEWAY_TARGETS`, `ai-server/mcp_client/server_group.py`). CEL rules: metrics and
-  Kubernetes reads for everyone signed in, write tools only with scope `k8s:write`, the
-  team-knowledge resources for everyone signed in. Whatever no rule allows is hidden and
-  refused before it reaches a server. Progress, log summaries (sampling) and approvals
-  (elicitation) pass through: protocol 2026-07-28's "input required" rounds are plain
-  requests.
-- **Tokens signed with a key pair (RS256):** the AI server signs with
-  `keys/mcp-token-private.pem`; the gateway and the servers verify with `keys/jwks.json`
-  (`make mcp-keys`, run by `make setup` and `make up`). Verifiers can't mint tokens.
-- **Why agentgateway:** open source (Linux Foundation), one binary or container, YAML
-  config, and it supports protocol 2026-07-28 (use ≥ v1.6.0: earlier versions broke tool
-  calls with two or more servers). IBM ContextForge still implements 2025-11-25.
+| | Gateway | MCP servers |
+| --- | --- | --- |
+| Is the token valid? (401 otherwise) | yes | yes, again: that's how they learn who's calling |
+| Which tools may this token reach (read vs write)? | yes | no |
+| Roles and four eyes | no | yes: they know the roles and see the approval answer |
+| Audit log | access log | every call, approval and outcome, with the trace link |
 
-Verified on the kind cluster (when built): two serversVerified on the kind cluster: two servers directly: eval 6/6, proposed fixes 3/3. Through the gateway: the first run lost the runbooks (resources were renamed to `k8s+runbook://…` and no CEL rule allowed them); fixed, the evidence matched the direct run item for item. high-cpu then failed once because the incident's CPU load had faded (peak throttling 92% → 23%, then no symptom at all); in Docker (`make up-kind`) high-cpu and bad-deploy passed. Approvals through the gateway: four eyes enforced, rollback done, error rate → 0. Gateway overhead: +1 to +4 ms per tool call (median of 30). In Docker the gateway forwards `Host` without a port, so the servers' allowed hosts list the bare names.
+How the gateway is set up:
+
+- **One address for both servers.** Tool names get a prefix for their server (`k8s_list_pods`,
+  `k8s+runbook://…`), and the AI server maps them back.
+- **Simple allow rules.** Metrics and Kubernetes reads for everyone signed in, the runbooks for
+  everyone signed in, and the fix tools only with write permission. Anything not allowed is hidden
+  and refused before it reaches a server.
+- **Everything else passes through:** progress updates, log summaries (sampling) and approval
+  questions (elicitation) all work through the gateway.
+- **Tokens are signed with a key pair.** Only the AI server holds the private key. The gateway and
+  the servers only have the public key, so they can check tokens but never create them.
+
+**Why agentgateway:** it's open source (Linux Foundation), runs as a single binary or container,
+is configured with one YAML file, and supports the latest MCP protocol (2026-07-28). Use v1.6.0 or
+newer, because earlier versions broke tool calls when there were two or more servers.
+
+**What testing found:**
+- **The first run through the gateway quietly lost the runbooks.** Resources got renamed with
+  the `k8s+` prefix, and no rule allowed them, so the agent investigated without them and still
+  answered. Nothing failed; the evidence was just thinner. After adding the rule, the evidence
+  matched the direct run item for item.
+- **The gateway costs almost nothing:** 1 to 4 ms per tool call.
+- **Approvals work through the gateway:** four eyes was enforced and the rollback went through.
+
+**In the code:** `mcp-platform/gateway/agentgateway.yaml`, `mcp-platform/server/base_server.py`,
+`k8s/server.py`, `prometheus/server.py`, `ai-server/mcp_client/server_group.py`.

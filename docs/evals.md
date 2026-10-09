@@ -1,108 +1,127 @@
 # Evaluation
 
-Injected incidents, grading, replay, and comparing runs as Langfuse experiments.
+How do you know an AI agent is actually good, and not just good at the one example you tried? You
+break things on purpose, ask it what's wrong, and grade the answer. Then you do it again after
+every change.
 
-## Incidents and evaluation (Phase 9)
+## Breaking things on purpose
 
-Six realistic failures, each a kustomize overlay on the healthy base
-(`lab/kubernetes/incidents/<name>`). Inject one with `make incident NAME=<name>`
-and undo it with `make incident-reset`.
+There are six realistic failures, each something that really happens in production. Each one is a
+small change on top of the healthy shop (a Kustomize overlay in `lab/kubernetes/incidents/<name>`).
 
-| Incident | What breaks | Expected root cause |
+| Incident | What breaks | What the agent should say |
 | --- | --- | --- |
-| `payment-down` | payment-service scaled to 0 | `dependency_unavailable` in payment-service |
-| `db-down` | Postgres (`payments-db`) scaled to 0 → payment-service 503 → order-service 502 | `dependency_unavailable` in **payments-db** (two hops from the symptom) |
-| `bad-deploy` | payment-service rolled to `v2`, whose regression fails every payment (pods stay healthy) | `bad_deployment` in payment-service |
-| `crash-loop` | A config change drops payment-service's API key Secret → every pod crashes at startup | `crash_loop` in payment-service |
-| `high-cpu` | user-service does expensive work per request and hits its 250m CPU limit | `resource_exhaustion` in user-service |
-| `slow-payments` | payment-service takes 3s per request | `slow_dependency` in payment-service |
+| `payment-down` | payment-service has no pods left | payment-service is unavailable |
+| `db-down` | The Postgres database is down → payment-service fails → order-service fails | **payments-db** is unavailable, two hops away from the symptom |
+| `bad-deploy` | A new payment-service version fails every payment, but its pods look perfectly healthy | bad deployment of payment-service |
+| `crash-loop` | A config change removes payment-service's API key, so every pod crashes at startup | payment-service is crash-looping |
+| `high-cpu` | user-service does heavy work per request and hits its CPU limit | user-service is out of CPU |
+| `slow-payments` | payment-service takes 3 seconds per request | payment-service is a slow dependency |
 
-The faults are real behaviour in the sample services, switched on by a
-`FAULT_MODE` setting that only the incident overlays set (`error`/`latency` in
-payment-service, `cpu` in user-service). payment-service stores payments in
-Postgres, whose password is a generated Secret like the API key.
+```bash
+make incident NAME=db-down    # break it
+make incident-reset           # fix it
+```
 
-**Eval.** With the cluster and both servers running, `make eval` does the
-following for each incident:
-1. Inject it.
-2. Wait until the symptom shows in Prometheus or in pod restarts.
-3. Ask `/investigate` a vague, operator-style question that doesn't name the
-   cause.
-4. Grade the report's `cause_category` and `root_cause_service` against the
-   expected answer (exact match).
-5. Reset, and wait until the cluster is healthy again.
+These aren't simulations. The services really misbehave, switched on by a `FAULT_MODE` setting
+that only the incident overlays set.
 
-Results are printed as a table and saved to `evals/results/` (gitignored).
-Run a subset with `make eval NAME=db-down,high-cpu`. Each run costs about 3
-LLM calls per incident.
+## Grading the agent
 
-**Latest results (2026-10-03): 6/6 in two consecutive runs, all with high confidence** (full run about 11 minutes).
+With the cluster and the stack running, `make eval` goes through every incident:
 
-**What the eval uncovered and fixed:**
-- payment-service never recovered after a database restart: the table was
-  created only once per process.
-- p99 latency was capped at 1000 ms by the default histogram buckets.
-- Average CPU hides CPU-limit throttling. Prometheus now scrapes kubelet
-  cAdvisor (`cpu_throttled_ratio`) with a ClusterRole limited to `nodes` and
-  `nodes/metrics`.
-- Pod logs came back as one undecoded string with no timestamps. They're now
-  proper lines, each timestamped, so old errors can be told from new ones.
-- Evidence left over from an earlier incident misled the agent: events of pods
-  that no longer exist, probe failures of booting pods, and old error lines.
-  Stale pod events are now filtered (with a note). The model gets the current
-  time, and every metric history carries `latest`, `min` and `max`, to separate
-  a past spike from an ongoing problem.
-- `/health` and `/metrics` requests flooded the access logs and pushed real
-  traffic out of the log tail. They're now filtered out of access logs, and
-  order-service logs slow upstream calls.
-- The categories were ambiguous (a config rollout that makes a service slow
-  looked like `bad_deployment`). `cause_category` is now chosen by failure
-  mechanism, in a fixed precedence order.
-- The traffic generator was one loop that waited for each answer, so load eased off
-  exactly when a service slowed down: during high-cpu, user-service was throttled
-  anywhere from 34% to 66% depending on timing. Now `TRAFFIC_WORKERS` (4) loops run in
-  parallel, like real users, and throttling is a steady 87-97%.
-- At moderate signal levels the LLM drew the wrong conclusion from correct evidence: a
-  service throttled at its CPU limit was called a "slow dependency", and a service that
-  was slow during the *previous* incident was blamed for the current one. Code now
-  states both facts as **computed findings** in the root-cause and report prompts
-  (`investigation/evidence/analysis.py::computed_findings`): "X is held at its CPU limit (250m):
-  throttled in 49% of CPU periods" and "slow right now: … / Y was slow earlier but has
-  recovered". A service counts as CPU-starved only if it also uses at least 15% of its
-  limit: an idle container with short bursts can look throttled too.
+1. Break the system.
+2. Wait until the problem actually shows up in Prometheus or in pod restarts.
+3. Ask the agent a vague question, the way a real person would, without naming the cause
+   ("Checkout errors started a few minutes ago. What is going on?").
+4. Check the report: is the **cause category** right, and is the **root-cause service** right?
+5. Fix the system and wait until it's healthy again.
 
-**Working on the agent's reasoning.** `make eval` saves every investigation with
-its raw evidence. `make replay NAME=high-cpu TIMES=5` re-runs only the LLM
-reasoning on that saved evidence in seconds, so prompt changes can be checked
-(repeatedly, since LLM answers vary) without re-injecting incidents. Finish with
-one full `make eval`.
+Results are printed as a table and saved to `evals/results/`. To run just a few incidents:
+`make eval NAME=db-down,high-cpu`. A full run takes about 11 minutes.
 
-**Eval speed.** Prometheus scrapes every 5s and rates use a 30s window, so
-symptoms show up, and clear, within seconds rather than minutes. The eval waits
-20s after a symptom appears (like an alert's `for:`) before asking the agent.
+<p align="center"><img src="images/demo-evals.png" alt="Evaluation runs: 6 of 6 incidents correct in most runs at about $0.02 per incident, and a model routing comparison" width="100%"></p>
 
-## Comparing runs in Langfuse (Phase 12)
+## What the evals caught
 
-With Langfuse keys in `ai-server/.env`, every `make eval` and `make replay` run is
-recorded as a Langfuse **experiment** (`evals/experiment_tracking.py`):
+This is where the real learning happened. Every one of these was found by an eval failing, not
+by trying the agent by hand:
 
-- The six incident cases are a dataset, `oncall-incidents` (question + expected
-  `cause_category` and `root_cause_service`), created or updated on each run.
-- A run is named after what produced it, e.g.
-  `eval: openai:gpt-5.4-mini @ 40f7795 (2026-10-02 18:30)` (`-dirty` if there were
-  uncommitted changes). `make replay TIMES=3` records three runs (`#1`–`#3`).
-- Each case is one experiment item, with scores: `correct`, `category_correct`,
-  `service_correct` (1/0) and the agent's `confidence`.
-- The full investigation is inside the item's trace. For replay the reasoning runs in
-  the same process. For eval the AI server is a separate process: the eval sends the
-  W3C `traceparent` header with `/investigate`, and the AI server records its trace
-  as a child of the experiment item (distributed tracing).
-- Traces are also tagged `eval` / `replay` and `incident:<name>`.
+- **payment-service never recovered after a database restart.** It created its table only once
+  per process, so it kept failing after the database came back.
+- **Latency maxed out at exactly 1000 ms.** The default histogram buckets stopped there.
+- **Average CPU hid the real problem.** A service stuck at its CPU limit can look fine on average.
+  Prometheus now also reads CPU *throttling* from the kubelet.
+- **Logs came back as one big string with no timestamps,** so old errors looked like new ones.
+  Each line now has its own timestamp.
+- **Leftovers from the previous incident fooled the agent:** events from pods that no longer exist,
+  health-check failures from pods that were still starting, old error lines. Stale events are now
+  hidden (with a note), the LLM is told the current time, and every metric history comes with its
+  latest, min and max value, so "spiked earlier" and "broken right now" look different.
+- **Health checks flooded the logs,** pushing the real errors out of view. They're now filtered out.
+- **The categories were ambiguous.** A config change that made a service slow looked like a "bad
+  deployment". Categories are now chosen by *how* things failed, in a fixed order.
+- **The traffic generator went easy exactly when things got slow.** It waited for each answer, so
+  load dropped as soon as a service slowed down, and CPU throttling swung between 34% and 66%. Now
+  four workers send orders in parallel like real users, and throttling holds steady at 87–97%.
+- **The LLM drew the wrong conclusion from the right evidence.** It called a service stuck at its
+  CPU limit a "slow dependency", and blamed a service that had been slow during the *previous*
+  incident. Now code works out those facts and states them plainly in the prompt, as **computed
+  findings**: "X is held at its CPU limit (250m): throttled in 49% of CPU periods", or "Y was slow
+  earlier but has recovered".
 
-**To compare models or prompts:** run `make eval` (or `make replay`), change
-`LLM_MODEL` or the prompt, run again, then open **Datasets → oncall-incidents →
-Experiments** in Langfuse and compare the runs side by side: pass rate, cost and
-latency, per incident.
+**Result:** 6/6 in two runs in a row, all with high confidence.
 
-Without keys, eval and replay work exactly as before. A Langfuse error is printed
-and never stops a run.
+## Replay: try a prompt change in seconds
+
+A full eval takes 11 minutes because the faults have to happen for real. But most changes only
+touch the *thinking* part. So `make eval` saves every investigation together with the evidence it
+collected, and replay re-runs only the LLM steps on that saved evidence:
+
+```bash
+make replay NAME=high-cpu TIMES=5    # same evidence, 5 fresh answers, a few seconds each
+```
+
+LLM answers vary from run to run, so running it several times shows whether a prompt change
+really helped. Finish with one full `make eval` before keeping the change.
+
+**Why the eval is fast at all:** Prometheus collects metrics every 5 seconds, and rates use a
+30-second window, so problems show up (and clear) within seconds. The eval waits 20 seconds after
+a problem appears before asking, like an alert that has to stay firing for a while.
+
+## Comparing runs in Langfuse
+
+Every `make eval` and `make replay` run is saved in Langfuse as an **experiment**, so you can put
+two runs side by side and compare them: did the new prompt get more right? Did the cheaper model
+cost less, and what did it get wrong?
+
+- The six incidents are a dataset called `oncall-incidents`.
+- Each run is named after what produced it, for example
+  `eval: openai:gpt-5.4-mini @ 40f7795 (2026-10-02 18:30)` (with `-dirty` if there were uncommitted
+  changes).
+- Every incident gets scores: `correct`, `category_correct`, `service_correct`, the agent's
+  `confidence`, and `action_correct` for the suggested fix.
+- Each score links to the full trace of that investigation, even though the eval runner and the
+  AI server are separate programs. The eval passes a `traceparent` header along with the
+  question, so both sides end up in the same trace.
+
+**To compare two models or prompts:** run `make eval` (or `make replay`), change `LLM_MODEL` or the
+prompt, run it again, then open **Experiments** in Langfuse.
+
+Here's the list of runs, with the share of correct answers per run along the top and latency and
+cost per run in the table:
+
+<p align="center"><img src="images/langfuse-experiments.png" alt="Langfuse experiments list for the oncall-incidents dataset: a chart of category_correct per run, and a table of eval and replay runs with item count, latency, cost and scores" width="100%"></p>
+
+Select two runs and click **Compare**, and Langfuse puts them side by side, incident by incident.
+This is the model-routing test: the same saved evidence, once with the cheaper model writing the
+report (left) and once with gpt-5.4-mini for every step (right). The cheaper setup got 83% right
+against 100%, and the bottom row shows the incident it missed: high-cpu.
+
+<p align="center"><img src="images/langfuse-compare.png" alt="Langfuse comparison of two replay runs: with gpt-5.4-nano writing the report 83% correct, with gpt-5.4-mini 100% correct; per-incident scores side by side, with the high-cpu incident wrong only in the nano run" width="100%"></p>
+
+Without Langfuse keys, evals work exactly the same; nothing is recorded, and a Langfuse error
+never stops a run.
+
+**In the code:** `evals/incident_cases.py` (the six cases), `run_eval.py`, `replay.py`,
+`experiment_tracking.py`.

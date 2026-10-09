@@ -1,12 +1,16 @@
 # Architecture
 
-How an investigation runs and which MCP features the project uses.
+How an investigation runs, step by step, and which MCP features make it work.
 
-## How an investigation runs (Phase 8)
+## How an investigation runs
 
-A LangGraph state machine. **Code decides which checks run; the LLM
-understands, reasons and writes.** The same essential checks happen every
-time, and a typical investigation costs 3 LLM calls.
+Think about how a good on-call engineer works. They don't start by guessing. They open the
+dashboards, check which pods are unhappy, read the logs of whatever looks broken, and follow the
+trail. Only then do they sit back and think, "OK, what's actually going on here?"
+
+The agent works the same way. **Code decides which checks to run; the LLM only understands the
+question, reasons over the evidence and writes the report.** That way the important checks happen
+every single time, the agent can't wander off, and a typical investigation needs just 3 LLM calls.
 
 ```text
 START → extract_incident_scope → collect_namespace_overview → inspect_flagged_problems
@@ -14,28 +18,24 @@ START → extract_incident_scope → collect_namespace_overview → inspect_flag
                                                    └──→ write_report → END
 ```
 
-Code layout (`ai-server/agent/`): `workflow/graph.py` only wires the flow; each
-step is a method of `InvestigationNodes` in `workflow/nodes.py`; the state passed
-between steps is `InvestigationState` in `workflow/state.py`; the collection steps
-are in `evidence/collection_steps.py` and the rules they use (unhealthy pods, failing or
-slow services…) in `evidence/analysis.py`; LLM setup is in `llm/`, prompts in `prompts.py`.
-Step names, MCP tool names and other fixed values are in `ai-server/constants.py`.
-
-| Step | Who | What |
+| Step | Who does it | What happens, in plain words |
 | --- | --- | --- |
-| `extract_incident_scope` | LLM (structured output) | `IncidentScope`: namespace, suspected services, symptom, time window |
-| `collect_namespace_overview` | Code, in parallel | `get_service_overview`, `list_pods`, `list_events` (warnings), `list_deployments` |
-| `inspect_flagged_problems` | Code, in parallel | Unhealthy pods → status and logs (`previous=true` if the pod restarted). Services above `ERROR_RATE_THRESHOLD` → error-rate history, plus logs from one pod even if it looks healthy. Deployments not fully ready or scaled to 0 → rollout history |
-| `trace_failing_dependencies` | Code, in parallel | Error or slow-call log lines naming another service (`upstream unavailable: POST http://payment-service/…`) → that service's pods, deployment, error rate and latency |
-| `find_root_cause` ⇄ `run_requested_tools` | LLM + tools | Reasons over all the evidence (JSON). May request up to `MAX_FOLLOW_UP_ROUNDS` rounds of extra tool calls |
-| `write_report` | LLM (structured output) | `IncidentReport`: incident, impact, cited evidence, likely cause, confidence, recommended actions, timeline |
+| `extract_incident_scope` | LLM | Reads your question and pulls out the basics: which namespace, which services you suspect, what the symptom is, how far back to look. |
+| `collect_namespace_overview` | Code | Takes a quick look at everything at once: error rate and latency per service, all pods, warning events, all deployments. |
+| `inspect_flagged_problems` | Code | Zooms in on whatever looked wrong: logs and status of unhappy pods (including the crashed container's logs), the error history of failing services, the rollout history of deployments that aren't fully ready. |
+| `trace_failing_dependencies` | Code | Follows the clues. If order-service's logs say `upstream unavailable: POST http://payment-service/…`, it goes and checks payment-service too. |
+| `find_root_cause` | LLM + tools | Thinks over all the evidence. If something is missing, it can ask for more tools, for a limited number of rounds. |
+| `write_report` | LLM | Writes the incident report: what's broken, impact, evidence with quotes, likely cause, confidence, suggested fixes and a timeline. |
 
-If an MCP tool is missing (e.g. no metrics), its step is skipped and noted.
-A tool that fails becomes evidence (with its error) rather than stopping the
-investigation. Thresholds and limits are in `ai-server/.env` (see
-`.env.example`).
+Things go wrong during investigations too, so the agent is forgiving about it:
 
-**Response** of `POST /investigate`:
+- **A tool is missing** (say, no metrics server): the step is skipped, and the report notes it.
+- **A tool fails:** the error becomes part of the evidence instead of stopping the investigation.
+- **Thresholds** such as "what counts as a high error rate" live in `ai-server/.env`, not in the
+  code.
+
+<details>
+<summary>What <code>POST /investigate</code> returns</summary>
 
 ```json
 {
@@ -51,18 +51,27 @@ investigation. Thresholds and limits are in `ai-server/.env` (see
 }
 ```
 
-## MCP concepts used
+</details>
 
-| Concept | Where |
-| --- | --- |
-| MCP servers and tools | `mcp-platform/server/k8s/server.py`, `prometheus/server.py` (shared parts in `base_server.py`). The JSON Schema for each tool comes from its type hints (`Literal` → `enum`, `Field(ge, le)` → `minimum`/`maximum`), and the docstring becomes the description the LLM reads. |
-| Discovery / invocation | `tools/list` in `mcp_client/langchain_tools.py`, `tools/call` through each LangChain tool |
-| Tool errors | Schema violations and `ToolError` come back as `is_error=True`. The SDK hides the text of unexpected exceptions. |
-| Transport | Streamable HTTP at `/mcp`. stdio is available with `MCP_TRANSPORT=stdio`. |
-| Progress | `ctx.report_progress` in `get_service_overview`; the client opts in per call with `progress_callback` (`mcp_client/progress.py`). |
-| Resources | `runbook://`, `topology://`, `k8s://` URI templates (`mcp-platform/server/k8s/knowledge.py`); read by the client with `read_resource`. |
-| Annotations / completions | `readOnlyHint` on every tool, enforced by the client; completions for resource-template arguments. |
-| Elicitation | Write tools ask for approval with `Resolve`/`Elicit`; the AI server answers via `Client(elicitation_callback=…)` from `POST /actions/{id}/approval`. |
-| Sampling | `get_pod_logs(summarize=true)` asks the client's LLM through `Resolve`/`Sample` with model preferences; the client answers with `Client(sampling_callback=…)` (`llm/sampling.py`). |
-| Authorization | Bearer tokens checked by `MCPServer(token_verifier=…)` with `AuthSettings` (401 + protected resource metadata); scopes and roles enforced by server middleware (`MCPServer(middleware=[…])`). |
-| Host / client | The AI server is the host. `mcp.Client` is the client. |
+**In the code:** `ai-server/investigation/workflow/` (`graph.py` wires the steps, `nodes.py` holds
+them, `state.py` is what they pass along); the checks are in `investigation/evidence/`, and the
+prompts are in `investigation/prompts.py`.
+
+## MCP features used
+
+MCP (Model Context Protocol) is the standard way for an AI app to talk to tools. Here's each
+piece of it, what it means in this project, and where it lives.
+
+| MCP feature | What it means here | In the code |
+| --- | --- | --- |
+| **Servers and tools** | Two servers give the agent its tools: one for Kubernetes, one for Prometheus. Each tool's description and input rules come straight from its Python type hints and docstring. | `mcp-platform/server/k8s/`, `prometheus/` |
+| **Discovery and calls** | The agent asks the servers "what tools do you have?" (`tools/list`) and then calls them (`tools/call`). | `mcp_client/langchain_tools.py` |
+| **Tool errors** | Bad input or a failed tool comes back as an error result the LLM can read, not a crash. | the MCP SDK |
+| **Transport** | Streamable HTTP: every request is a plain POST to `/mcp`. | both apps |
+| **Progress** | A slow tool can say "2 of 3 queries done", and that shows up live for the user. | `get_service_overview`, `mcp_client/progress.py` |
+| **Resources** | Read-only documents the agent can look up: runbooks, the service map, deployment specs. | `k8s/knowledge.py` |
+| **Annotations and completions** | Every tool is labelled read-only or destructive, and the agent only gets the read-only ones. Completions autocomplete resource names. | `tool_definitions.py`, `mcp_client/tool_policy.py` |
+| **Elicitation** | Before changing anything, the server stops and asks a human for approval. | `k8s/deployments.py`, `ai-server/actions/` |
+| **Sampling** | The server borrows the agent's LLM to summarize long logs, so it needs no API key of its own. | `k8s/pods.py`, `ai-server/llm/sampling.py` |
+| **Authorization** | Every request carries a signed token saying who's asking; without one the answer is 401. | `mcp-platform/server/auth/`, `ai-server/auth/` |
+| **Host and client** | The AI server is the *host*; inside it, `mcp.Client` is the *client* that talks to the servers. | `ai-server/mcp_client/` |

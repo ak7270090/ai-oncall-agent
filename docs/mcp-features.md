@@ -1,101 +1,108 @@
 # Advanced MCP features
 
-Resources, annotations and completions, sampling and model routing.
+Most MCP demos stop at "the AI can call tools". MCP can do quite a bit more, and this page covers
+the parts that made the agent noticeably better: giving it the team's knowledge, keeping it away
+from dangerous tools, and saving money on long logs.
 
-## Team knowledge as MCP resources (Phase 13)
+## Giving the agent the team's runbooks (resources)
 
-Tools return *live* data. An experienced engineer also knows things no metric shows:
-what depends on what, what a log message usually means, what is safe to do. The MCP
-server publishes that knowledge as **resources**: read-only documents with a URI, which
-the *client* reads (a tool, by contrast, is something the *model* decides to call).
+Tools show what's happening *right now*. But an engineer who's been on the team for a year knows
+things no dashboard shows: "payment-service talks to Postgres on 5432", "if you see
+`database unavailable`, check payments-db first", "restarting this one is safe, that one isn't".
 
-| Resource | Content | Source |
-| --- | --- | --- |
-| `runbook://{service}` | dependencies, what its log messages mean, known failure modes, safe actions (Markdown) | `mcp-platform/server/knowledge/runbooks/<service>.md` |
-| `topology://{namespace}` | who calls whom (JSON) | `mcp-platform/server/knowledge/topology/<namespace>.json` |
-| `k8s://{namespace}/deployments/{name}` | configured spec: image, env var *names*, envFrom ConfigMaps/Secrets by name, CPU/memory, probes; never values | live, Kubernetes API |
+MCP **resources** are how the server shares that kind of knowledge: read-only documents with an
+address, like a URL. A tool is something the *LLM* decides to call; a resource is something the
+*app* reads and hands to the LLM.
+
+| Resource | What's in it |
+| --- | --- |
+| `runbook://{service}` | The service's runbook: what it depends on, what its log messages mean, known failure modes, safe actions (Markdown files in `mcp-platform/server/knowledge/runbooks/`) |
+| `topology://{namespace}` | The service map: who calls whom (JSON in `mcp-platform/server/knowledge/topology/`) |
+| `k8s://{namespace}/deployments/{name}` | A deployment's live configuration: image, *names* of environment variables and config, CPU and memory, health checks; never secret values |
+
+The agent reads them during its normal checks: the service map first, then the runbook of every
+service that looks broken or that the logs blame. They go into the evidence as "documented
+knowledge", and the prompt says plainly: **if the runbook and the live data disagree, trust the
+live data.** Runbooks go stale; logs don't lie about the present.
+
+**Try it:** open MCP Inspector → Resources → `runbook://payment-service`.
+
+**Did it help?** It didn't change the scores: 6/6 both with and without runbooks, for about 4%
+more input tokens at the same cost. The agent was already passing all six incidents, so there was
+no room to improve. The runbooks should pay off on harder incidents (Phase 23 adds more).
+
+## Keeping dangerous tools away from the agent (annotations)
+
+Once the server got tools that can *change* things (rollback, scale, restart), it became
+important that the investigating agent can never even see them.
+
+- **Every tool carries a label:** read-only or destructive. The AI server only hands the agent
+  tools labelled read-only. A tool with no label is treated as unsafe, logged, and left out.
+- **`GET /tools` shows the labels,** so you can check what the agent gets.
+- **Labels are a hint, not security.** The real protection is still Kubernetes permissions: the
+  investigating server's account can't write anything anyway.
+
+**Completions** are the small quality-of-life feature next to it: autocomplete for resource
+names in MCP clients. Type `runbook://pay` and get `payment-service` and `payments-db`. (MCP has
+completions for resource and prompt arguments, not for tool arguments.)
+
+## Summarizing long logs (sampling + model routing)
+
+Logs are expensive. Every line goes into the strong model's prompt, and twice: once to find the
+root cause and once to write the report. Most of those lines are noise.
+
+The fix: summarize the logs first, with a cheap model. The interesting part is *who* does it.
 
 ```text
-→ resources/templates/list   ← runbook://{service}, topology://{namespace}, k8s://{namespace}/deployments/{name}
-→ resources/read runbook://payment-service
-← "# payment-service\n`POST /payments` ... database unavailable: payments-db:5432 ..."
+agent ──► Kubernetes MCP server: "give me 200 lines of payment-service logs, summarized"
+          server: "that's long. Could your LLM summarize it? Prefer cheap and fast."   (MCP sampling)
+agent ──► model router picks the fast, cheap model ──► summary
+          server: returns the summary + the newest 5 raw lines
+agent ──► the strong model reads the summary, not 200 lines
 ```
 
-The agent reads them during the fixed steps (`USE_SERVICE_KNOWLEDGE=true`, default):
-`collect_namespace_overview` reads the service map; `inspect_flagged_problems` reads the
-runbooks of the flagged services; `trace_failing_dependencies` those of services the logs
-blame. They become evidence (`source: runbook` / `topology`); the prompt says it's
-documented knowledge and that live evidence wins if they disagree. A service without a
-runbook becomes a note, not evidence. The namespace allowlist applies, names are
-validated, and the SDK itself rejects path traversal in URIs.
+**MCP sampling** means the *server* asks the *agent's* LLM to do some work. The Kubernetes server
+has no API key and no model of its own. It just says what it would like ("cheap, fast, doesn't
+need to be clever") and the agent decides which model answers. You can see this in the live demo:
+the two `MCP sampling request: summarize_pod_logs` lines.
 
-Try it: MCP Inspector → Resources → `runbook://payment-service`.
+In Langfuse, each sampling request shows up as its own LLM call in the investigation's trace,
+with the instructions the server sent and the raw log lines it wants summarized:
 
-**Measured** (two eval runs each): 6/6 with and without knowledge, high confidence; about
-+4% input tokens and the same cost per incident. No gain is visible yet because the agent
-already passes all six incidents.
+<p align="center"><img src="images/langfuse-sampling-call.png" alt="A summarize_pod_logs sampling call in Langfuse: 3.36 seconds, $0.004, 3k tokens, with the summary instructions and the raw order-service log lines showing upstream error 500 and 502 Bad Gateway" width="100%"></p>
 
-## Tool annotations and completions (Phase 16)
-
-- **Annotations:** every tool is registered with `readOnlyHint=true`,
-  `destructiveHint=false`, `idempotentHint=true` (`tool_definitions.py::READ_ONLY_TOOL`).
-  The AI server gives the agent **only** tools annotated read-only
-  (`mcp_client/tool_policy.py`); a tool without annotations counts as unsafe and is
-  logged and left out. `GET /tools` shows `read_only` / `destructive` per tool. Hints
-  are not security: RBAC still limits what the MCP server can do.
-- **Completions:** autocomplete for resource arguments in MCP clients:
-  `runbook://pay…` → `payment-service`, `payments-db`; `k8s://shop/deployments/…` lists
-  the deployments (`k8s/knowledge.py`). MCP completions exist for resource-template
-  and prompt arguments, not for tool arguments.
-
-## Log summaries and model routing (Phase 17)
-
-Long logs are expensive: every line goes into the strong model's prompt, twice (root
-cause and report). With `SUMMARIZE_LOGS=true` the agent asks for summaries instead, and
-a cheap model writes them, chosen through **MCP sampling** and **model routing**.
+**Model routing** is how the agent decides. There are two tiers:
 
 ```bash
 # ai-server/.env
-LLM_MODEL=openai:gpt-5.4-mini        # strong tier: reasoning (unchanged)
-LLM_MODEL_FAST=openai:gpt-5.4-nano   # fast tier: log summaries; same LLM_API_KEY
+LLM_MODEL=openai:gpt-5.4-mini        # strong: finding the root cause, writing the report
+LLM_MODEL_FAST=openai:gpt-5.4-nano   # fast and cheap: log summaries
 SUMMARIZE_LOGS=true
 LOG_LINES=200                        # summaries make reading more history affordable
 ```
 
-```text
-inspect_flagged_problems ─► tools/call get_pod_logs(pod, lines=200, summarize=true)
-     MCP server: 200 lines ≥ MCP_LOG_SUMMARY_MIN_LINES ─► "input required: sampling,
-                 model preferences: cost 0.8, speed 0.7, intelligence 0.2"
-     AI server:  ModelRouter → fast tier (gpt-5.4-nano) ─► summary
-     MCP server: returns {summary, summarized_by, newest 5 lines} as the tool result
-find_root_cause / write_report ─► the strong model reads the summary, not 200 lines
-```
+Sampling requests go to whichever tier their preferences describe. Graph steps go to the strong
+tier unless they're listed in `FAST_MODEL_STEPS`. Without `LLM_MODEL_FAST`, everything uses the
+one model, as before.
 
-- **MCP sampling** (`mcp-platform/server/k8s/pods.py`): the MCP server asks the
-  *client's* LLM for the summary, so it holds no API key and picks no model. It only
-  states preferences; with protocol 2026-07-28 the SDK sends them as an "input
-  required" result and re-runs the tool with the answer. The question must be identical
-  on that second run, so fetched lines are reused for `MCP_LOG_CACHE_SECONDS`.
-  Short logs and clients that can't sample get raw lines.
-- **Model routing** (`ai-server/llm/model_router.py`): two tiers. Sampling
-  requests go to the tier their preferences describe (a model-name hint wins; otherwise
-  cost/speed above intelligence → fast). Graph steps listed in `FAST_MODEL_STEPS` use
-  the fast tier; all others the strong one. Without `LLM_MODEL_FAST` nothing changes.
-- **SamplingResponder** (`llm/sampling.py`) answers the requests: capped per
-  investigation (`MAX_SAMPLINGS_PER_INVESTIGATION`), recorded in the Langfuse trace and
-  streamed as `llm` events with `model` and `purpose`. A failed summary falls back to
-  raw lines.
+Safety nets: summaries are capped per investigation, every one is recorded in the trace and shown
+in the live stream, and if a summary fails the agent just gets the raw lines.
 
-**Measured** (Langfuse experiments, kind cluster, one eval run each):
+### What it bought
 
-| Setup | Log lines read | Strong-model input tokens / incident | Cost / incident | Pass |
+| Setup | Log lines read | Strong-model input tokens per incident | Cost per incident | Correct |
 | --- | --- | --- | --- | --- |
-| mini only, raw logs | 50 | 16,046 | $0.0192 | 4/6 |
-| mini + nano summaries | 200 | 13,206 (−18%) | $0.0203 | 5/6 |
-| replay: nano also writes the report | — | — | ~$0.012 (−40%) | 5/6; high-cpu 1/3 on repeats |
+| One model, raw logs | 50 | 16,046 | $0.0192 | 4/6 |
+| Cheap model summarizes the logs | 200 | 13,206 (−18%) | $0.0203 | 5/6 |
+| Cheap model also writes the report (replay) | — | — | ~$0.012 (−40%) | 5/6, and high-cpu only 1/3 on repeats |
 
-Summaries let the agent read 4× more log history while the strong model sees fewer
-tokens, at about the same total cost. Moving `write_report` to the cheap model saves 40%
-but loses accuracy on the hardest incident: the report step decides the cause category,
-so it stays on the strong model. One run per setup is within LLM noise; repeat before
-relying on small differences.
+So the agent reads **4× more log history** while the strong model sees **fewer** tokens, for
+about the same money.
+
+The tempting next step, letting the cheap model write the report too, cut cost by 40% but got
+the hardest incident wrong. The report step decides the cause category, so it stays on the strong
+model. One run per setup is within normal LLM noise, so treat small differences with care.
+
+**In the code:** `mcp-platform/server/k8s/pods.py` (asks for the summary),
+`ai-server/llm/model_router.py` (picks the model), `ai-server/llm/sampling.py` (answers the
+request).

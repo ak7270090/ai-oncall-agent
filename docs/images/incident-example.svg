@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" width="1200" height="330" role="img" aria-label="Timeline of the example: Neha asks at 18:10, Prometheus MCP shows payment-service at 100% errors, Kubernetes MCP shows a new version at 18:05 with HTTP 500 in the logs, the LLM names a bad deployment, and after a second person approves the rollback errors are back to 0% at 18:14" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
+<rect x="0" y="0" width="1200" height="330" rx="18" fill="#ffffff" stroke="#e2e8f0"/>
+<line x1="140" y1="55" x2="1060" y2="55" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+<text x="140" y="38" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">18:10</text>
+<circle cx="140" cy="55" r="7" fill="#7c3aed" stroke="#ffffff" stroke-width="2"/>
+<line x1="140" y1="62" x2="140" y2="85" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="3 3"/>
+<rect x="40" y="85" width="200" height="215" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<circle cx="66" cy="113" r="13" fill="#7c3aed"/>
+<text x="66" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">1</text>
+<text x="88" y="118" font-size="15" font-weight="700" fill="#0f172a">Neha asks</text>
+<text x="58" y="155" font-size="13" fill="#334155">“Orders have been</text>
+<text x="58" y="176" font-size="13" fill="#334155">failing since the latest</text>
+<text x="58" y="197" font-size="13" fill="#334155">release. Please</text>
+<text x="58" y="218" font-size="13" fill="#334155">investigate.”</text>
+<rect x="54" y="252" width="172" height="30" rx="15" fill="#7c3aed"/>
+<text x="140" y="272" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">Neha → AI agent</text>
+<line x1="243" y1="192" x2="267" y2="192" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="370" y="38" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">18:10</text>
+<circle cx="370" cy="55" r="7" fill="#ea580c" stroke="#ffffff" stroke-width="2"/>
+<line x1="370" y1="62" x2="370" y2="85" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="3 3"/>
+<rect x="270" y="85" width="200" height="215" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<circle cx="296" cy="113" r="13" fill="#ea580c"/>
+<text x="296" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">2</text>
+<text x="318" y="118" font-size="15" font-weight="700" fill="#0f172a">Find what&#x27;s broken</text>
+<text x="288" y="155" font-size="13" fill="#334155">Error rate, latency and</text>
+<text x="288" y="176" font-size="13" fill="#334155">CPU for every service:</text>
+<text x="288" y="197" font-size="13" fill="#334155">payment-service is at</text>
+<text x="288" y="218" font-size="13" fill="#334155">100% errors.</text>
+<rect x="284" y="252" width="172" height="30" rx="15" fill="#ea580c"/>
+<text x="370" y="272" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">Prometheus MCP</text>
+<line x1="473" y1="192" x2="497" y2="192" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="600" y="38" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">18:11</text>
+<circle cx="600" cy="55" r="7" fill="#ea580c" stroke="#ffffff" stroke-width="2"/>
+<line x1="600" y1="62" x2="600" y2="85" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="3 3"/>
+<rect x="500" y="85" width="200" height="215" rx="14" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<circle cx="526" cy="113" r="13" fill="#ea580c"/>
+<text x="526" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">3</text>
+<text x="548" y="118" font-size="15" font-weight="700" fill="#0f172a">Dig into it</text>
+<text x="518" y="155" font-size="13" fill="#334155">A new version went out</text>
+<text x="518" y="176" font-size="13" fill="#334155">at 18:05. Logs show</text>
+<text x="518" y="197" font-size="13" fill="#334155">HTTP 500 on /payments.</text>
+<text x="518" y="218" font-size="13" fill="#334155">Reads the runbook.</text>
+<rect x="514" y="252" width="172" height="30" rx="15" fill="#ea580c"/>
+<text x="600" y="272" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">Kubernetes MCP</text>
+<line x1="703" y1="192" x2="727" y2="192" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="830" y="38" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">18:12</text>
+<circle cx="830" cy="55" r="7" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+<line x1="830" y1="62" x2="830" y2="85" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="3 3"/>
+<rect x="730" y="85" width="200" height="215" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<circle cx="756" cy="113" r="13" fill="#2563eb"/>
+<text x="756" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">4</text>
+<text x="778" y="118" font-size="15" font-weight="700" fill="#0f172a">Root cause</text>
+<text x="748" y="155" font-size="13" fill="#334155">Bad deployment of</text>
+<text x="748" y="176" font-size="13" fill="#334155">payment-service.</text>
+<text x="748" y="197" font-size="13" fill="#334155">Confidence: high.</text>
+<text x="748" y="218" font-size="13" fill="#334155">Suggests a rollback.</text>
+<rect x="744" y="252" width="172" height="30" rx="15" fill="#2563eb"/>
+<text x="830" y="272" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">LLM</text>
+<line x1="933" y1="192" x2="957" y2="192" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="1060" y="38" text-anchor="middle" font-size="13" font-weight="700" fill="#334155">18:14</text>
+<circle cx="1060" cy="55" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="2"/>
+<line x1="1060" y1="62" x2="1060" y2="85" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3 3"/>
+<rect x="960" y="85" width="200" height="215" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+<circle cx="986" cy="113" r="13" fill="#16a34a"/>
+<text x="986" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">5</text>
+<text x="1008" y="118" font-size="15" font-weight="700" fill="#0f172a">Fixed, safely</text>
+<text x="978" y="155" font-size="13" fill="#334155">Neha asks for the</text>
+<text x="978" y="176" font-size="13" fill="#334155">rollback, Aman</text>
+<text x="978" y="197" font-size="13" fill="#334155">approves it. Errors</text>
+<text x="978" y="218" font-size="13" fill="#334155">are back to 0%.</text>
+<rect x="974" y="252" width="172" height="30" rx="15" fill="#16a34a"/>
+<text x="1060" y="272" text-anchor="middle" font-size="12" font-weight="600" fill="#ffffff">Second person approves</text>
+</svg>

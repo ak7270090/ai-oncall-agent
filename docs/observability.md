@@ -1,26 +1,58 @@
 # Observability
 
-Tracing every investigation in Langfuse, and streaming its progress live.
+When the agent gives a wrong answer, "the AI got it wrong" isn't good enough. You need to see
+exactly what it looked at, what it was told, what it said back, and what that cost. And while it's
+running, the person who asked shouldn't be staring at a spinner.
 
-## Tracing with Langfuse (Phase 11)
+## Tracing every investigation with Langfuse
 
-Every investigation can be recorded as one **trace** in [Langfuse](https://langfuse.com):
-a timeline of each graph step, every LLM call (prompt, answer, model, tokens, cost)
-and every MCP tool call with its arguments and result.
+Every investigation is recorded as one **trace** in [Langfuse](https://langfuse.com): a timeline
+of every step, every LLM call (the full prompt, the answer, the model, tokens and cost) and every
+MCP tool call with its arguments and result.
 
 ```text
-investigate                         (agent: question in, report out, outcome metadata)
+investigate                           question in, report out
 └─ LangGraph
-   ├─ extract_incident_scope   → ChatOpenAI (generation: tokens, cost)
-   ├─ collect_namespace_overview → list_pods, list_events, … (tool spans, in parallel)
+   ├─ extract_incident_scope     → LLM call (tokens, cost)
+   ├─ collect_namespace_overview → list_pods, list_events, …   (in parallel)
    ├─ inspect_flagged_problems   → get_pod_logs, get_metrics, …
    ├─ trace_failing_dependencies → list_pods, …
-   ├─ find_root_cause          → ChatOpenAI  ⇄  run_requested_tools → get_pod_status, …
-   └─ write_report             → ChatOpenAI
+   ├─ find_root_cause            → LLM call ⇄ extra tools it asked for
+   └─ write_report               → LLM call
 ```
 
-Setup: create a Langfuse project (cloud or self-hosted), then **Settings → API Keys**,
-and put the keys in `ai-server/.env`:
+Here's the real trace of the bad-deploy demo in Langfuse. On the left, every step and tool call on
+a timeline with its duration and cost; on the right, the question and the report the agent wrote.
+You can see the fixed checks finishing in under half a second, and the time going to the three
+LLM steps and the two log summaries.
+
+<p align="center"><img src="images/langfuse-trace-timeline.png" alt="Langfuse trace timeline of the bad-deploy investigation: 18.57 seconds, $0.021, 18k tokens; each step, tool call and LLM call with its duration and cost, and the final report on the right" width="100%"></p>
+
+So when a report is wrong, you open its trace and see whether the evidence was missing (a
+collection problem) or there and misread (a prompt problem). Those two need very different fixes.
+Clicking any LLM call shows exactly what the model was given: here, the root-cause step's system
+prompt, the current time, the computed findings and every piece of evidence as JSON.
+
+<p align="center"><img src="images/langfuse-llm-call.png" alt="One LLM call in Langfuse: the find_root_cause step with gpt-5.4-mini, 3.76 seconds, $0.006, 6k tokens, showing the system prompt and the evidence it received" width="100%"></p>
+
+The graph view shows the same investigation as the LangGraph flow it ran through:
+
+<p align="center"><img src="images/langfuse-trace-graph.png" alt="Langfuse graph view of the investigation: start, extract_incident_scope, collect_namespace_overview, inspect_flagged_problems, trace_failing_dependencies, find_root_cause, write_report, end" width="100%"></p>
+
+It also answers "what does this cost?". Here's the same investigation broken down per LLM call:
+
+<p align="center"><img src="images/demo-cost.png" alt="Cost of one investigation: $0.021, 18.6 seconds, 5 LLM calls, 14 MCP calls, 17.5k tokens; writing the report and finding the root cause cost the most" width="100%"></p>
+
+And across a whole month of building and testing (every eval, replay and demo run), the Langfuse
+home page adds it up: 188 traces, $3.14 in total, and 649 scores from the evals, with the average
+of each.
+
+<p align="center"><img src="images/langfuse-home.png" alt="Langfuse home over 30 days: 188 traces, $3.14 total model cost (gpt-5.4-mini $3.10, gpt-5.4-nano $0.04), 649 scores with averages such as correct 0.92 and service_correct 0.98" width="100%"></p>
+
+### Turn it on
+
+Create a Langfuse project (cloud or self-hosted), go to **Settings → API Keys**, and put the keys in
+`ai-server/.env`:
 
 ```bash
 LANGFUSE_PUBLIC_KEY=pk-lf-...
@@ -28,70 +60,68 @@ LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or https://us.cloud.langfuse.com, or your own
 ```
 
-Without keys tracing is off. `/investigate` returns `trace_id` and `trace_url`
-(a direct link to the trace). Optional request fields: `trace_tags` (e.g.
-`["incident:db-down"]`), and a W3C `traceparent` header to record the
-investigation inside the caller's trace.
+From then on, every `/investigate` answer includes a `trace_url`, a direct link to its trace.
+Without keys, tracing is simply off.
 
-How it works (`ai-server/tracing.py`):
+### Good to know
 
-- `run_investigation` opens a root span and passes Langfuse's LangChain
-  `CallbackHandler` to the graph run. LangChain reports every step, LLM call and
-  LLM-requested tool to it; token usage comes from LangChain, so this works with any
-  provider, and Langfuse prices known models itself (add others under **Settings → Models**).
-- The fixed collection steps call MCP tools directly, so `MCPToolbox.call` reports
-  each call as a LangChain tool run; it shows up under its step like any other tool.
-- The MCP SDK's own OpenTelemetry spans are not exported (they would duplicate every
-  tool span).
-- Tracing never fails an investigation: if Langfuse is unreachable, only `trace_url`
-  is missing.
-- Traces contain prompts, logs, events and metrics the agent read. With Langfuse
-  Cloud they're stored there; secrets in `.env` are never sent.
+- **It works with any LLM provider.** Token counts come from LangChain, and Langfuse knows the
+  prices of the common models (you can add others under **Settings → Models**).
+- **The fixed checks show up too.** They call MCP tools directly, not through the LLM, so each
+  call is reported as a tool run and appears under its step like any other tool.
+- **Tracing never breaks an investigation.** If Langfuse is down, you only lose the link.
+- **Traces contain real data:** the prompts, logs, events and metrics the agent read. With
+  Langfuse Cloud they're stored there. Secrets from `.env` are never sent.
+- **Joining someone else's trace:** send a W3C `traceparent` header and the investigation is
+  recorded inside the caller's trace. The evals use this. You can also tag traces with
+  `trace_tags`, for example `["incident:db-down"]`.
 
-## Live progress (Phase 15)
+**In the code:** `ai-server/tracing.py`.
 
-`POST /investigate/stream` runs the same investigation as `/investigate` and sends
-what happens as it happens, as Server-Sent Events (SSE): one HTTP response that stays
-open and delivers one small event at a time.
+## Watching it live
+
+An investigation takes 15 to 20 seconds. That feels long when production is down and you're
+staring at a blank screen. So `POST /investigate/stream` runs the same investigation and tells you
+what it's doing *while* it does it: "checking pods… reading payment-service logs… summarizing…
+found it."
 
 ```bash
 curl -N -X POST http://127.0.0.1:8000/investigate/stream \
      -H "content-type: application/json" -d '{"question": "Checkout is failing"}'
 ```
 
-```text
-event: step      data: {"step": "collect_namespace_overview", "status": "started"}
-event: tool      data: {"tool": "get_service_overview", "call_id": "a1f0c2d4", "status": "started", "step": "collect_namespace_overview", "arguments": {"namespace": "shop"}}
-event: progress  data: {"tool": "get_service_overview", "progress": 2.0, "total": 3.0, "message": "error_rate queried in 0.4s"}
-event: tool      data: {"tool": "get_service_overview", "call_id": "a1f0c2d4", "status": "finished", "step": "collect_namespace_overview", "seconds": 0.9}
-event: note      data: {"note": "trace_failing_dependencies: logs point at payment-service"}
-event: llm       data: {"call_id": "77be01c9", "step": "find_root_cause", "status": "finished", "seconds": 3.8, "input_tokens": 5919, "output_tokens": 457}
-event: report    data: {...the same InvestigateResponse as POST /investigate...}
-```
+Here's the real stream from the bad-deploy demo:
 
-| Event | When |
+<p align="center"><img src="images/demo-live-progress.png" alt="Live event stream: each step starting and finishing, MCP tool calls, progress updates, two MCP sampling requests, LLM calls with tokens, and the final report" width="100%"></p>
+
+It uses Server-Sent Events: one HTTP response that stays open and sends small events as things
+happen.
+
+| Event | When it arrives |
 | --- | --- |
-| `step` | a graph step starts / finishes (with seconds) |
-| `tool` | an MCP tool call starts / finishes / fails; `call_id` pairs them (calls run in parallel) |
-| `progress` | the MCP server reports progress inside one tool call |
-| `llm` | an LLM call starts / finishes (seconds, tokens, `model`, `purpose` for sampling) |
-| `note` | a step explains a decision (skipped tools, hidden stale events, followed dependencies) |
-| `report` / `error` | the end: the full response, or `{"status_code", "detail"}` |
+| `step` | A step starts or finishes (with how long it took) |
+| `tool` | An MCP tool call starts, finishes or fails; `call_id` pairs them up, since calls run in parallel |
+| `progress` | A slow tool reports how far it is, e.g. "error_rate queried in 0.4s" |
+| `llm` | An LLM call starts or finishes, with tokens and model; `purpose` is set for sampling requests |
+| `note` | The agent explains a decision: a skipped tool, hidden stale events, a dependency it followed |
+| `report` / `error` | The end: the full report (same as `/investigate`), or what went wrong |
 
-How it works, in two hops:
+### How progress gets from the cluster to your screen
 
-1. **MCP server → AI server (MCP progress notifications).** `get_service_overview`
-   runs three PromQL queries; after each one the backend calls back and the tool sends
-   `ctx.report_progress(done, 3, "error_rate queried in 0.4s")`
-   (`mcp-platform/server/prometheus/helpers.py::query_progress_reporter`). The AI server passes a
-   `progress_callback` with every `call_tool`, which is what asks the server for progress.
-2. **AI server → user (SSE).** `ai-server/investigation/events.py` collects three sources into one
-   queue: LangChain callbacks (steps, tool calls, LLM calls, notes), MCP progress, and
-   the final report or error. The route yields them with FastAPI's `EventSourceResponse`.
+It travels in two hops:
 
-Closing the connection (Ctrl+C, a closed tab) cancels the investigation: the graph
-stops and its pending MCP and LLM calls are cancelled.
+1. **MCP server → AI server.** `get_service_overview` runs three Prometheus queries. After each
+   one, the server sends an MCP progress notification ("2 of 3 done"). The AI server asks for
+   these by passing a `progress_callback` with every tool call.
+2. **AI server → you.** Three sources feed one queue: LangChain callbacks (steps, tool calls, LLM
+   calls, notes), the MCP progress notifications, and the final report. The endpoint streams that
+   queue to you.
 
-MCP *logging* (`notifications/message`) is deprecated as of protocol 2026-07-28
-(SEP-2577), so the server doesn't use it: progress messages carry the server's status
-text, and `note` events carry the AI server's explanations.
+**Closing the connection stops the work.** Hit Ctrl+C or close the tab, and the investigation is
+cancelled along with its pending LLM and tool calls. Nobody pays for an answer no one is waiting for.
+
+MCP also has a *logging* feature, but it's deprecated as of protocol 2026-07-28, so it isn't used
+here. Progress messages and `note` events cover the same need.
+
+**In the code:** `ai-server/investigation/events.py` (the queue and event types),
+`mcp-platform/server/prometheus/tools.py` (progress from the Prometheus server).
