@@ -1,0 +1,644 @@
+{
+ "type": "excalidraw",
+ "version": 2,
+ "source": "https://excalidraw.com",
+ "appState": {
+  "viewBackgroundColor": "#ffffff",
+  "gridSize": 20
+ },
+ "files": {},
+ "elements": [
+  {
+   "type": "text",
+   "id": "title",
+   "x": 20,
+   "y": 20,
+   "width": 700,
+   "height": 35,
+   "text": "MCP sampling: the tool borrows the agent's LLM",
+   "originalText": "MCP sampling: the tool borrows the agent's LLM",
+   "fontSize": 28,
+   "fontFamily": 3,
+   "strokeColor": "#1e40af",
+   "roughness": 1
+  },
+  {
+   "type": "text",
+   "id": "subtitle",
+   "x": 20,
+   "y": 62,
+   "width": 1200,
+   "height": 20,
+   "text": "The Kubernetes server has no API key and picks no model. It says what it cares about; the agent's model router decides.",
+   "originalText": "The Kubernetes server has no API key and picks no model. It says what it cares about; the agent's model router decides.",
+   "fontSize": 16,
+   "fontFamily": 3,
+   "strokeColor": "#64748b",
+   "roughness": 1
+  },
+  {
+   "type": "text",
+   "id": "lane_ai",
+   "x": 20,
+   "y": 112,
+   "width": 400,
+   "height": 22,
+   "text": "AI server (MCP client)",
+   "originalText": "AI server (MCP client)",
+   "fontSize": 18,
+   "fontFamily": 3,
+   "strokeColor": "#1e40af",
+   "roughness": 1
+  },
+  {
+   "type": "line",
+   "id": "lane_divider",
+   "x": 20,
+   "y": 318,
+   "width": 1500,
+   "height": 0,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     1500,
+     0
+    ]
+   ],
+   "strokeColor": "#cbd5e1",
+   "strokeWidth": 1,
+   "strokeStyle": "dashed",
+   "roughness": 1
+  },
+  {
+   "type": "text",
+   "id": "lane_mcp",
+   "x": 20,
+   "y": 334,
+   "width": 400,
+   "height": 22,
+   "text": "Kubernetes MCP server",
+   "originalText": "Kubernetes MCP server",
+   "fontSize": 18,
+   "fontFamily": 3,
+   "strokeColor": "#1e3a5f",
+   "roughness": 1
+  },
+  {
+   "type": "rectangle",
+   "id": "s1",
+   "x": 20,
+   "y": 160,
+   "width": 230,
+   "height": 86,
+   "strokeColor": "#1e3a5f",
+   "backgroundColor": "#3b82f6",
+   "fillStyle": "solid",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "roundness": {
+    "type": 3
+   },
+   "boundElements": [
+    {
+     "id": "s1_t",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": "s1_t",
+   "x": 30,
+   "y": 173,
+   "width": 210,
+   "height": 60,
+   "text": "1 get_pod_logs\nlines=200\nsummarize=true",
+   "originalText": "1 get_pod_logs\nlines=200\nsummarize=true",
+   "fontSize": 16,
+   "fontFamily": 3,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "strokeColor": "#ffffff",
+   "containerId": "s1",
+   "roughness": 1
+  },
+  {
+   "type": "rectangle",
+   "id": "s2",
+   "x": 300,
+   "y": 380,
+   "width": 250,
+   "height": 86,
+   "strokeColor": "#1e3a5f",
+   "backgroundColor": "#60a5fa",
+   "fillStyle": "solid",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "roundness": {
+    "type": 3
+   },
+   "boundElements": [
+    {
+     "id": "s2_t",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": "s2_t",
+   "x": 310,
+   "y": 393,
+   "width": 230,
+   "height": 60,
+   "text": "2 200 lines is long\n→ \"input required:\nplease summarize\"",
+   "originalText": "2 200 lines is long\n→ \"input required:\nplease summarize\"",
+   "fontSize": 16,
+   "fontFamily": 3,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "strokeColor": "#1e293b",
+   "containerId": "s2",
+   "roughness": 1
+  },
+  {
+   "type": "arrow",
+   "id": "a12",
+   "x": 200,
+   "y": 250,
+   "width": 140,
+   "height": 126,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     140,
+     126
+    ]
+   ],
+   "strokeColor": "#1e3a5f",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "endArrowhead": "arrow"
+  },
+  {
+   "type": "text",
+   "id": "a12_t",
+   "x": 150,
+   "y": 282,
+   "width": 100,
+   "height": 18,
+   "text": "tools/call",
+   "originalText": "tools/call",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#1e3a5f",
+   "roughness": 1
+  },
+  {
+   "type": "text",
+   "id": "pref_label",
+   "x": 300,
+   "y": 486,
+   "width": 300,
+   "height": 18,
+   "text": "what the server asks for",
+   "originalText": "what the server asks for",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#64748b",
+   "roughness": 1
+  },
+  {
+   "type": "rectangle",
+   "id": "pref_panel",
+   "x": 296,
+   "y": 510,
+   "width": 300,
+   "height": 106,
+   "strokeColor": "#1e293b",
+   "backgroundColor": "#1e293b",
+   "fillStyle": "solid",
+   "strokeWidth": 1,
+   "roughness": 0,
+   "roundness": {
+    "type": 3
+   }
+  },
+  {
+   "type": "text",
+   "id": "pref_text",
+   "x": 312,
+   "y": 522,
+   "width": 270,
+   "height": 86,
+   "text": "task: summarize_pod_logs\ncost_priority: 0.8\nspeed_priority: 0.7\nintelligence_priority: 0.2",
+   "originalText": "task: summarize_pod_logs\ncost_priority: 0.8\nspeed_priority: 0.7\nintelligence_priority: 0.2",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#22c55e",
+   "roughness": 0
+  },
+  {
+   "type": "diamond",
+   "id": "router",
+   "x": 610,
+   "y": 128,
+   "width": 250,
+   "height": 160,
+   "strokeColor": "#6d28d9",
+   "backgroundColor": "#ddd6fe",
+   "fillStyle": "solid",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "boundElements": [
+    {
+     "id": "router_t",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": "router_t",
+   "x": 660,
+   "y": 178,
+   "width": 150,
+   "height": 60,
+   "text": "3 model router\ncheap + fast\nmatter most?",
+   "originalText": "3 model router\ncheap + fast\nmatter most?",
+   "fontSize": 15,
+   "fontFamily": 3,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "strokeColor": "#374151",
+   "containerId": "router",
+   "roughness": 1
+  },
+  {
+   "type": "arrow",
+   "id": "a23",
+   "x": 554,
+   "y": 378,
+   "width": 120,
+   "height": 110,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     120,
+     -110
+    ]
+   ],
+   "strokeColor": "#6d28d9",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "endArrowhead": "arrow"
+  },
+  {
+   "type": "text",
+   "id": "a23_t",
+   "x": 640,
+   "y": 330,
+   "width": 160,
+   "height": 18,
+   "text": "sampling request",
+   "originalText": "sampling request",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#6d28d9",
+   "roughness": 1
+  },
+  {
+   "type": "rectangle",
+   "id": "fast",
+   "x": 920,
+   "y": 128,
+   "width": 220,
+   "height": 62,
+   "strokeColor": "#047857",
+   "backgroundColor": "#a7f3d0",
+   "fillStyle": "solid",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "roundness": {
+    "type": 3
+   },
+   "boundElements": [
+    {
+     "id": "fast_t",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": "fast_t",
+   "x": 930,
+   "y": 139,
+   "width": 200,
+   "height": 40,
+   "text": "fast tier\nwrites the summary",
+   "originalText": "fast tier\nwrites the summary",
+   "fontSize": 15,
+   "fontFamily": 3,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "strokeColor": "#374151",
+   "containerId": "fast",
+   "roughness": 1
+  },
+  {
+   "type": "rectangle",
+   "id": "strong",
+   "x": 920,
+   "y": 226,
+   "width": 220,
+   "height": 62,
+   "strokeColor": "#1e40af",
+   "backgroundColor": "#dbeafe",
+   "fillStyle": "solid",
+   "strokeWidth": 2,
+   "strokeStyle": "dashed",
+   "roughness": 1,
+   "roundness": {
+    "type": 3
+   },
+   "boundElements": [
+    {
+     "id": "strong_t",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": "strong_t",
+   "x": 930,
+   "y": 237,
+   "width": 200,
+   "height": 40,
+   "text": "strong tier\nsaved for reasoning",
+   "originalText": "strong tier\nsaved for reasoning",
+   "fontSize": 15,
+   "fontFamily": 3,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "strokeColor": "#374151",
+   "containerId": "strong",
+   "roughness": 1
+  },
+  {
+   "type": "arrow",
+   "id": "a_fast",
+   "x": 820,
+   "y": 180,
+   "width": 96,
+   "height": 22,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     96,
+     -22
+    ]
+   ],
+   "strokeColor": "#047857",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "endArrowhead": "arrow"
+  },
+  {
+   "type": "text",
+   "id": "a_fast_t",
+   "x": 846,
+   "y": 140,
+   "width": 40,
+   "height": 18,
+   "text": "yes",
+   "originalText": "yes",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#047857",
+   "roughness": 1
+  },
+  {
+   "type": "arrow",
+   "id": "a_strong",
+   "x": 820,
+   "y": 236,
+   "width": 96,
+   "height": 22,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     96,
+     22
+    ]
+   ],
+   "strokeColor": "#94a3b8",
+   "strokeWidth": 2,
+   "strokeStyle": "dashed",
+   "roughness": 1,
+   "endArrowhead": "arrow"
+  },
+  {
+   "type": "rectangle",
+   "id": "s4",
+   "x": 1000,
+   "y": 380,
+   "width": 260,
+   "height": 86,
+   "strokeColor": "#1e3a5f",
+   "backgroundColor": "#60a5fa",
+   "fillStyle": "solid",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "roundness": {
+    "type": 3
+   },
+   "boundElements": [
+    {
+     "id": "s4_t",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": "s4_t",
+   "x": 1010,
+   "y": 393,
+   "width": 240,
+   "height": 60,
+   "text": "4 tool runs again\nreturns the summary\n+ newest 5 lines",
+   "originalText": "4 tool runs again\nreturns the summary\n+ newest 5 lines",
+   "fontSize": 16,
+   "fontFamily": 3,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "strokeColor": "#1e293b",
+   "containerId": "s4",
+   "roughness": 1
+  },
+  {
+   "type": "arrow",
+   "id": "a_sum",
+   "x": 1144,
+   "y": 160,
+   "width": 56,
+   "height": 216,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     56,
+     0
+    ],
+    [
+     56,
+     150
+    ],
+    [
+     6,
+     216
+    ]
+   ],
+   "strokeColor": "#047857",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "endArrowhead": "arrow"
+  },
+  {
+   "type": "text",
+   "id": "a_sum_t",
+   "x": 1210,
+   "y": 270,
+   "width": 90,
+   "height": 18,
+   "text": "summary",
+   "originalText": "summary",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#047857",
+   "roughness": 1
+  },
+  {
+   "type": "rectangle",
+   "id": "s5",
+   "x": 1290,
+   "y": 160,
+   "width": 240,
+   "height": 86,
+   "strokeColor": "#6d28d9",
+   "backgroundColor": "#ddd6fe",
+   "fillStyle": "solid",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "roundness": {
+    "type": 3
+   },
+   "boundElements": [
+    {
+     "id": "s5_t",
+     "type": "text"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": "s5_t",
+   "x": 1300,
+   "y": 173,
+   "width": 220,
+   "height": 60,
+   "text": "5 strong model reads\nthe summary,\nnot 200 lines",
+   "originalText": "5 strong model reads\nthe summary,\nnot 200 lines",
+   "fontSize": 16,
+   "fontFamily": 3,
+   "textAlign": "center",
+   "verticalAlign": "middle",
+   "strokeColor": "#374151",
+   "containerId": "s5",
+   "roughness": 1
+  },
+  {
+   "type": "arrow",
+   "id": "a45",
+   "x": 1264,
+   "y": 378,
+   "width": 90,
+   "height": 128,
+   "points": [
+    [
+     0,
+     0
+    ],
+    [
+     90,
+     -128
+    ]
+   ],
+   "strokeColor": "#1e3a5f",
+   "strokeWidth": 2,
+   "roughness": 1,
+   "endArrowhead": "arrow"
+  },
+  {
+   "type": "text",
+   "id": "a45_t",
+   "x": 1318,
+   "y": 320,
+   "width": 110,
+   "height": 18,
+   "text": "tool result",
+   "originalText": "tool result",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#1e3a5f",
+   "roughness": 1
+  },
+  {
+   "type": "text",
+   "id": "measured_label",
+   "x": 660,
+   "y": 500,
+   "width": 300,
+   "height": 18,
+   "text": "measured on the 6 incidents",
+   "originalText": "measured on the 6 incidents",
+   "fontSize": 14,
+   "fontFamily": 3,
+   "strokeColor": "#64748b",
+   "roughness": 1
+  },
+  {
+   "type": "text",
+   "id": "measured",
+   "x": 660,
+   "y": 526,
+   "width": 860,
+   "height": 80,
+   "text": "4× more log history read (200 lines instead of 50)\n18% fewer tokens for the strong model\nabout the same cost per incident",
+   "originalText": "4× more log history read (200 lines instead of 50)\n18% fewer tokens for the strong model\nabout the same cost per incident",
+   "fontSize": 18,
+   "fontFamily": 3,
+   "strokeColor": "#047857",
+   "roughness": 1
+  }
+ ]
+}

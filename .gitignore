@@ -11,6 +11,7 @@ mcp-platform/server/.kube/
 evals/results/
 docs/WALKTHROUGH.md
 docs/LINKEDIN_POSTS.md
+docs/linkedin/
 mcp-platform/server/logs/
 keys/
 mcp-platform/gateway/bin/

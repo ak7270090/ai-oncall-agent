@@ -3,83 +3,78 @@
 [![CI](https://github.com/ak7270090/ai-oncall-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ak7270090/ai-oncall-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-An AI teammate for on-call. When something breaks in production, you tell it what's going on in
-plain English, the way you'd message a colleague, and it does the digging for you.
+**Your phone buzzes at 2 a.m.: "Checkout is broken."** You run `kubectl get pods`, scroll through
+hundreds of log lines, check what was deployed today, and stare at Grafana one service after
+another. Twenty minutes later you find it: the payments database is down, and everything above it
+is failing because of it. The fix took one command. Finding it took all the time.
 
----
+This agent does that digging for you. You ask it in plain English, the way you'd message a
+colleague, and it looks at your pods, reads the logs and pulls out the lines that matter, checks
+error rates and latency in Prometheus, notices what was deployed recently, follows the chain from
+the failing service down to the real cause, and reads your team's runbooks. Then it writes a short
+report: what's broken, why, the evidence for every claim, and a suggested fix.
 
-## The problem
-
-Your phone buzzes at 2 a.m.: "Checkout is broken." You open your laptop, still half asleep, and
-start the usual routine:
-
-- *Which pods are unhappy?* `kubectl get pods`, then scroll.
-- *What are they saying?* Read through hundreds of log lines, looking for the one that matters.
-- *Did someone deploy something?* Check the rollout history.
-- *Is it this service, or something it calls?* Open Grafana and stare at the error and latency
-  graphs, one service after another.
-
-Twenty minutes later you find it: the payments database is down, and everything above it is
-failing because of it. The fix took one command. Finding it took all the time.
-
-## What this agent does
-
-You ask it the same question you'd ask a teammate: *"Checkout is failing, what's wrong?"* It then
-does what you would have done, only faster:
-
-- 🔍 **Looks at your pods:** which ones are crashing, restarting, or not ready.
-- 📜 **Reads the logs for you** and pulls out the lines that matter, like
-  `connection refused to payments-db`, instead of handing you a wall of text.
-- 📈 **Checks the graphs:** error rate, latency and CPU for every service, from Prometheus.
-- 🕐 **Checks what changed:** a new deployment five minutes before the errors started is a big hint.
-- 🧭 **Follows the chain:** if `order-service` fails because `payment-service` fails because the
-  database is down, it walks down to the real cause instead of blaming the first service it sees.
-- 📖 **Reads your runbooks**, the notes your team wrote about each service.
-
-Then it gives you a short report: what's broken, why, the evidence for each claim, and a
-suggested fix.
-
-**It can't break anything on its own.** By default it can only look, never touch. If it suggests
-a fix, like rolling back a bad release, someone has to ask for it, and a *second* person has to
-approve it. Everything it does is written to an audit log.
-
----
-
-## Example: a bad release on a Friday evening
-
-- **18:05**: the team ships a new version of `payment-service` and heads home.
-- **18:09**: customers start reporting that orders fail at checkout.
-- **18:10**: Neha is on call, opens a laptop and asks the agent:
-
-> "Orders have been failing since the latest release. Please investigate."
+For example, on a Friday evening a new version of `payment-service` goes out at 18:05, and by 18:09
+orders are failing at checkout. Neha is on call and asks: *"Orders have been failing since the
+latest release. Please investigate."* Two minutes later the agent answers: bad deployment of
+`payment-service`, the new version throws `KeyError: 'currency'` on every payment, roll it back.
+Neha asks for the rollback, Aman approves it, and checkout works again at 18:14, without anyone
+typing `kubectl`.
 
 <p align="center">
   <img src="docs/images/incident-example.svg" alt="Timeline: Neha asks at 18:10; Prometheus MCP shows payment-service at 100% errors; Kubernetes MCP shows a new version at 18:05 and HTTP 500 in the logs; the LLM names a bad deployment; a second person approves the rollback and errors are back to 0% at 18:14" width="100%">
 </p>
 
-**18:12**: here's what Neha gets back:
+**It can't break anything on its own.** By default it can only look, never touch. A fix runs only
+when someone asks for it and a *second* person approves it, and every step lands in an audit log.
 
-> **Incident:** orders fail because payment-service returns HTTP 500 since the latest rollout.
->
-> **Root cause:** bad deployment of `payment-service` (confidence: high).
->
-> **Evidence:**
-> - Prometheus: payment-service error rate 100%; every other service looks healthy.
-> - Kubernetes: a new version went out at 18:05, and the errors start at the same minute.
-> - Logs: `POST /payments 500 Internal Server Error`.
->
-> **Suggested fix:** roll `payment-service` back to the previous version.
+---
 
-Neha didn't run a single `kubectl` command. Neha asked for the rollback, Aman approved it from a
-phone, and checkout was working again by 18:14.
+## Architecture
+
+<p align="center">
+  <img src="docs/images/architecture.png" alt="The engineer asks the AI server; the AI server uses an LLM and calls the Kubernetes and Prometheus MCP servers through the MCP gateway; the MCP servers read the Kubernetes cluster and Prometheus; traces go to Langfuse" width="100%">
+</p>
+
+**How it works:** the question goes to the AI server, which runs the same investigation every
+time. Code collects the evidence through the MCP gateway: pods, logs, deployments, events and
+runbooks from the Kubernetes MCP server, and error rate, latency and CPU from the Prometheus MCP
+server. Then the LLM reasons over that evidence and writes the report. Every MCP request carries a
+signed token that lives for 60 seconds: the gateway decides which tools it may reach, and the
+servers check it again before touching anything. Every step is traced in Langfuse.
+
+- **AI server:** the brain. It plans the investigation, picks a model for each step (a cheap,
+  fast one for simple steps, a stronger one for the root cause) and handles approvals.
+- **MCP gateway:** the front door. It checks every token and decides which tools that person may
+  use.
+- **MCP servers:** the hands. One knows Kubernetes, the other knows Prometheus. Neither knows
+  anything about LLMs.
+
+---
+
+## Concepts used
+
+| Concept | In plain words |
+|---|---|
+| **MCP servers** | Two small servers, one for Kubernetes and one for Prometheus, that give the AI "tools" it can call, like *get pod logs* or *get error rate*. Any MCP-compatible AI app can use them. |
+| **MCP gateway** | A single front door in front of the MCP servers. It checks who's calling and which tools they're allowed to use. |
+| **MCP sampling** | The Kubernetes server has no AI of its own. When logs are too long, it asks the agent's LLM to summarize them, so the agent reads the key lines instead of thousands. |
+| **MCP elicitation (human approval)** | Before anything changes in production, the MCP server stops and asks a human to approve, and that human must be a second person. |
+| **Live progress streaming** | You watch the investigation as it happens ("checking pods… reading logs… found it"), instead of waiting for a final answer. |
+| **Model routing** | Simple steps go to a cheap, fast model; the hard thinking goes to a stronger one. Same quality, lower cost. |
+| **Agent workflow (LangGraph)** | A fixed checklist gathers the evidence first, and then the LLM reasons over it, so the agent doesn't wander or make things up. |
+| **Grounded answers** | Every claim in the report points to the evidence it came from. |
+| **Provider-agnostic LLM** | Switching between OpenAI, Anthropic, Gemini and others takes two settings and no code changes. |
+| **Evals and replay** | Real failures are injected into the cluster, and the agent's answers are graded automatically. Replay re-runs only the reasoning in seconds, to compare prompts and models. |
+| **Tracing and cost tracking (Langfuse)** | Every investigation shows every step, LLM call and tool call, with its tokens, cost and time. |
 
 ---
 
 ## Demo: the same incident, for real
 
-Everything below comes from one real run on the local kind cluster. A broken `payment-service` v2
-was rolled out, the agent was asked *"Orders have been failing since the latest release. Please
-investigate."*, and the rollback went through the full approval flow.
+The Friday-evening example above, run for real on the local kind cluster: a broken
+`payment-service` v2 was rolled out, the agent was asked the same question, and the rollback went
+through the full approval flow. Every screenshot below comes from that one run.
 
 ### 1. You watch it work, live
 
@@ -145,40 +140,6 @@ And a month of building and testing, every eval, replay and demo run, adds up to
 $3.14 in total, and 649 scores:
 
 <p align="center"><img src="docs/images/langfuse-home.png" alt="Langfuse home over 30 days: 188 traces, $3.14 total model cost (gpt-5.4-mini $3.10, gpt-5.4-nano $0.04), 649 scores with averages such as correct 0.92 and service_correct 0.98" width="100%"></p>
-
----
-
-## Architecture
-
-<p align="center">
-  <img src="docs/images/architecture.svg" alt="The engineer asks the AI server; the AI server uses an LLM and calls the Kubernetes and Prometheus MCP servers through the MCP gateway; the MCP servers read the Kubernetes cluster and Prometheus; traces go to Langfuse" width="100%">
-</p>
-
-- **AI server:** the brain. It plans the investigation, picks a model for each step (a cheap,
-  fast one for simple steps, a stronger one for the root cause) and handles approvals.
-- **MCP gateway:** the front door. Every request carries a short-lived signed token, and the
-  gateway decides which tools that person may use.
-- **MCP servers:** the hands. One knows Kubernetes (pods, logs, events, deployments, runbooks);
-  the other knows Prometheus (error rate, latency, CPU). They check the token again before doing
-  anything.
-
----
-
-## Concepts used
-
-| Concept | In plain words |
-|---|---|
-| **MCP servers** | Two small servers, one for Kubernetes and one for Prometheus, that give the AI "tools" it can call, like *get pod logs* or *get error rate*. Any MCP-compatible AI app can use them. |
-| **MCP gateway** | A single front door in front of the MCP servers. It checks who's calling and which tools they're allowed to use. |
-| **MCP sampling** | The Kubernetes server has no AI of its own. When logs are too long, it asks the agent's LLM to summarize them, so the agent reads the key lines instead of thousands. |
-| **MCP elicitation (human approval)** | Before anything changes in production, the MCP server stops and asks a human to approve, and that human must be a second person. |
-| **Live progress streaming** | You watch the investigation as it happens ("checking pods… reading logs… found it"), instead of waiting for a final answer. |
-| **Model routing** | Simple steps go to a cheap, fast model; the hard thinking goes to a stronger one. Same quality, lower cost. |
-| **Agent workflow (LangGraph)** | A fixed checklist gathers the evidence first, and then the LLM reasons over it, so the agent doesn't wander or make things up. |
-| **Grounded answers** | Every claim in the report points to the evidence it came from. |
-| **Provider-agnostic LLM** | Switching between OpenAI, Anthropic, Gemini and others takes two settings and no code changes. |
-| **Evals and replay** | Real failures are injected into the cluster, and the agent's answers are graded automatically. Replay re-runs only the reasoning in seconds, to compare prompts and models. |
-| **Tracing and cost tracking (Langfuse)** | Every investigation shows every step, LLM call and tool call, with its tokens, cost and time. |
 
 ---
 

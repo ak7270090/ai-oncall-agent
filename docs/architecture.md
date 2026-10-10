@@ -12,11 +12,7 @@ The agent works the same way. **Code decides which checks to run; the LLM only u
 question, reasons over the evidence and writes the report.** That way the important checks happen
 every single time, the agent can't wander off, and a typical investigation needs just 3 LLM calls.
 
-```text
-START → extract_incident_scope → collect_namespace_overview → inspect_flagged_problems
-      → trace_failing_dependencies → find_root_cause ⇄ run_requested_tools (≤ MAX_FOLLOW_UP_ROUNDS)
-                                                   └──→ write_report → END
-```
+<p align="center"><img src="images/investigation-flow.png" alt="How one investigation runs: the LLM understands the question, code collects an overview, zooms in on what is broken and follows the dependency, the LLM finds the root cause (asking for extra tools if needed) and writes the report; real timings and notes from the demo run" width="100%"></p>
 
 | Step | Who does it | What happens, in plain words |
 | --- | --- | --- |

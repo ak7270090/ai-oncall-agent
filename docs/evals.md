@@ -40,6 +40,8 @@ With the cluster and the stack running, `make eval` goes through every incident:
 Results are printed as a table and saved to `evals/results/`. To run just a few incidents:
 `make eval NAME=db-down,high-cpu`. A full run takes about 11 minutes.
 
+<p align="center"><img src="images/eval-loop.png" alt="The eval loop: break it, wait until it shows in metrics, ask a vague question, grade the answer on two fields, heal it, six times in about 11 minutes; a real grading example for db-down; replay skips the cluster and goes straight to grading" width="100%"></p>
+
 <p align="center"><img src="images/demo-evals.png" alt="Evaluation runs: 6 of 6 incidents correct in most runs at about $0.02 per incident, and a model routing comparison" width="100%"></p>
 
 ## What the evals caught

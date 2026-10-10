@@ -19,6 +19,10 @@ revision 1". It can't run it on its own. Running it goes like this:
 5. If approved, the change is made. If it's rejected, declined, or nobody answers in time,
    nothing changes, and the result says so.
 
+<p align="center"><img src="images/approval-flow.png" alt="A fix needs two people: Neha requests the rollback, the gateway checks the write scope, the Kubernetes MCP server checks the arguments and asks for approval; Neha's own approval is refused with 403, Aman's approval passes the role and four-eyes check, the rollback runs, error rate goes from 100% to 0%, and the audit log records it" width="100%"></p>
+
+The same flow as API calls:
+
 ```text
 POST /investigate  → report.proposed_actions: [{"operation": "rollback_deployment",
                       "deployment": "payment-service", "revision": 1, "reason": "..."}]

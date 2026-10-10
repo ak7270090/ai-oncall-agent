@@ -53,13 +53,7 @@ root cause and once to write the report. Most of those lines are noise.
 
 The fix: summarize the logs first, with a cheap model. The interesting part is *who* does it.
 
-```text
-agent ──► Kubernetes MCP server: "give me 200 lines of payment-service logs, summarized"
-          server: "that's long. Could your LLM summarize it? Prefer cheap and fast."   (MCP sampling)
-agent ──► model router picks the fast, cheap model ──► summary
-          server: returns the summary + the newest 5 raw lines
-agent ──► the strong model reads the summary, not 200 lines
-```
+<p align="center"><img src="images/sampling-flow.png" alt="MCP sampling: the agent asks for summarized logs, the Kubernetes MCP server answers input required with cost 0.8, speed 0.7 and intelligence 0.2, the model router picks the fast tier, the summary goes back to the server, and the strong model reads the summary instead of 200 lines" width="100%"></p>
 
 **MCP sampling** means the *server* asks the *agent's* LLM to do some work. The Kubernetes server
 has no API key and no model of its own. It just says what it would like ("cheap, fast, doesn't

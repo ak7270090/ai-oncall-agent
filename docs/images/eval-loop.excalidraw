@@ -1,0 +1,47 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "appState": {"viewBackgroundColor": "#ffffff", "gridSize": 20},
+  "files": {},
+  "elements": [
+    {"type": "text", "id": "title", "x": 20, "y": 20, "width": 700, "height": 35, "text": "How the agent is graded", "originalText": "How the agent is graded", "fontSize": 28, "fontFamily": 3, "strokeColor": "#1e40af", "roughness": 1},
+    {"type": "text", "id": "subtitle", "x": 20, "y": 62, "width": 1200, "height": 20, "text": "make eval breaks the shop for real, asks like a person would, and checks the answer. Replay re-runs only the thinking.", "originalText": "make eval breaks the shop for real, asks like a person would, and checks the answer. Replay re-runs only the thinking.", "fontSize": 16, "fontFamily": 3, "strokeColor": "#64748b", "roughness": 1},
+
+    {"type": "rectangle", "id": "n1", "x": 380, "y": 110, "width": 220, "height": 76, "strokeColor": "#dc2626", "backgroundColor": "#fee2e2", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "roundness": {"type": 3}, "boundElements": [{"id": "n1_t", "type": "text"}]},
+    {"type": "text", "id": "n1_t", "x": 390, "y": 128, "width": 200, "height": 40, "text": "1 break it\nmake incident", "originalText": "1 break it\nmake incident", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151", "containerId": "n1", "roughness": 1},
+    {"type": "rectangle", "id": "n2", "x": 640, "y": 260, "width": 220, "height": 76, "strokeColor": "#b45309", "backgroundColor": "#fef3c7", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "roundness": {"type": 3}, "boundElements": [{"id": "n2_t", "type": "text"}]},
+    {"type": "text", "id": "n2_t", "x": 650, "y": 278, "width": 200, "height": 40, "text": "2 wait until it\nshows in metrics", "originalText": "2 wait until it\nshows in metrics", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151", "containerId": "n2", "roughness": 1},
+    {"type": "rectangle", "id": "n3", "x": 560, "y": 470, "width": 230, "height": 76, "strokeColor": "#c2410c", "backgroundColor": "#fed7aa", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "roundness": {"type": 3}, "boundElements": [{"id": "n3_t", "type": "text"}]},
+    {"type": "text", "id": "n3_t", "x": 570, "y": 488, "width": 210, "height": 40, "text": "3 ask a vague\nquestion", "originalText": "3 ask a vague\nquestion", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151", "containerId": "n3", "roughness": 1},
+    {"type": "rectangle", "id": "n4", "x": 190, "y": 470, "width": 230, "height": 76, "strokeColor": "#6d28d9", "backgroundColor": "#ddd6fe", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "roundness": {"type": 3}, "boundElements": [{"id": "n4_t", "type": "text"}]},
+    {"type": "text", "id": "n4_t", "x": 200, "y": 488, "width": 210, "height": 40, "text": "4 grade the\nanswer", "originalText": "4 grade the\nanswer", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151", "containerId": "n4", "roughness": 1},
+    {"type": "rectangle", "id": "n5", "x": 120, "y": 260, "width": 220, "height": 76, "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2, "roughness": 1, "roundness": {"type": 3}, "boundElements": [{"id": "n5_t", "type": "text"}]},
+    {"type": "text", "id": "n5_t", "x": 130, "y": 278, "width": 200, "height": 40, "text": "5 heal it\nincident-reset", "originalText": "5 heal it\nincident-reset", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151", "containerId": "n5", "roughness": 1},
+
+    {"type": "arrow", "id": "c12", "x": 604, "y": 160, "width": 120, "height": 96, "points": [[0, 0], [90, 20], [120, 96]], "strokeColor": "#1e3a5f", "strokeWidth": 2, "roughness": 1, "endArrowhead": "arrow"},
+    {"type": "arrow", "id": "c23", "x": 760, "y": 340, "width": 70, "height": 126, "points": [[0, 0], [-10, 80], [-70, 126]], "strokeColor": "#1e3a5f", "strokeWidth": 2, "roughness": 1, "endArrowhead": "arrow"},
+    {"type": "arrow", "id": "c34", "x": 556, "y": 508, "width": 132, "height": 0, "points": [[0, 0], [-132, 0]], "strokeColor": "#1e3a5f", "strokeWidth": 2, "roughness": 1, "endArrowhead": "arrow"},
+    {"type": "arrow", "id": "c45", "x": 250, "y": 466, "width": 40, "height": 126, "points": [[0, 0], [-30, -60], [-20, -126]], "strokeColor": "#1e3a5f", "strokeWidth": 2, "roughness": 1, "endArrowhead": "arrow"},
+    {"type": "arrow", "id": "c51", "x": 250, "y": 256, "width": 126, "height": 96, "points": [[0, 0], [30, -80], [126, -96]], "strokeColor": "#1e3a5f", "strokeWidth": 2, "roughness": 1, "endArrowhead": "arrow"},
+    {"type": "text", "id": "c51_t", "x": 150, "y": 160, "width": 140, "height": 18, "text": "next incident", "originalText": "next incident", "fontSize": 14, "fontFamily": 3, "strokeColor": "#1e3a5f", "roughness": 1},
+    {"type": "text", "id": "c23_t", "x": 766, "y": 400, "width": 150, "height": 18, "text": "then 20 s more", "originalText": "then 20 s more", "fontSize": 14, "fontFamily": 3, "strokeColor": "#1e3a5f", "roughness": 1},
+
+    {"type": "text", "id": "center", "x": 380, "y": 300, "width": 220, "height": 80, "text": "× 6 incidents\nabout 11 min", "originalText": "× 6 incidents\nabout 11 min", "fontSize": 22, "fontFamily": 3, "textAlign": "center", "strokeColor": "#1e40af", "roughness": 1},
+
+    {"type": "text", "id": "ask_label", "x": 920, "y": 120, "width": 400, "height": 18, "text": "3  the question never names the cause", "originalText": "3  the question never names the cause", "fontSize": 14, "fontFamily": 3, "strokeColor": "#64748b", "roughness": 1},
+    {"type": "rectangle", "id": "ask_panel", "x": 916, "y": 144, "width": 520, "height": 50, "strokeColor": "#1e293b", "backgroundColor": "#1e293b", "fillStyle": "solid", "strokeWidth": 1, "roughness": 0, "roundness": {"type": 3}},
+    {"type": "text", "id": "ask_text", "x": 932, "y": 158, "width": 490, "height": 20, "text": "\"Checkout errors started a few minutes ago. What is going on?\"", "originalText": "\"Checkout errors started a few minutes ago. What is going on?\"", "fontSize": 13, "fontFamily": 3, "strokeColor": "#22c55e", "roughness": 0},
+
+    {"type": "text", "id": "grade_label", "x": 920, "y": 230, "width": 400, "height": 18, "text": "4  graded on two fields, exact match", "originalText": "4  graded on two fields, exact match", "fontSize": 14, "fontFamily": 3, "strokeColor": "#64748b", "roughness": 1},
+    {"type": "rectangle", "id": "grade_panel", "x": 916, "y": 254, "width": 520, "height": 118, "strokeColor": "#1e293b", "backgroundColor": "#1e293b", "fillStyle": "solid", "strokeWidth": 1, "roughness": 0, "roundness": {"type": 3}},
+    {"type": "text", "id": "grade_text", "x": 932, "y": 268, "width": 490, "height": 92, "text": "incident: db-down\nexpected  dependency_unavailable · payments-db\nagent     dependency_unavailable · payments-db\ncorrect: true   confidence: high", "originalText": "incident: db-down\nexpected  dependency_unavailable · payments-db\nagent     dependency_unavailable · payments-db\ncorrect: true   confidence: high", "fontSize": 14, "fontFamily": 3, "strokeColor": "#22c55e", "roughness": 0},
+    {"type": "arrow", "id": "a_langfuse", "x": 1176, "y": 376, "width": 0, "height": 46, "points": [[0, 0], [0, 46]], "strokeColor": "#64748b", "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 1, "endArrowhead": "arrow"},
+    {"type": "text", "id": "langfuse_t", "x": 1046, "y": 428, "width": 300, "height": 18, "text": "scores → Langfuse experiment", "originalText": "scores → Langfuse experiment", "fontSize": 14, "fontFamily": 3, "strokeColor": "#64748b", "roughness": 1},
+
+    {"type": "rectangle", "id": "replay", "x": 916, "y": 492, "width": 330, "height": 96, "strokeColor": "#1e3a5f", "backgroundColor": "#93c5fd", "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 1, "roundness": {"type": 3}, "boundElements": [{"id": "replay_t", "type": "text"}]},
+    {"type": "text", "id": "replay_t", "x": 926, "y": 510, "width": 310, "height": 60, "text": "replay: saved evidence\n→ only the LLM steps\nseconds, not minutes", "originalText": "replay: saved evidence\n→ only the LLM steps\nseconds, not minutes", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#1e293b", "containerId": "replay", "roughness": 1},
+    {"type": "arrow", "id": "a_replay", "x": 1080, "y": 592, "width": 775, "height": 58, "points": [[0, 0], [0, 50], [-775, 50], [-775, -42]], "strokeColor": "#1e3a5f", "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 1, "endArrowhead": "arrow"},
+    {"type": "text", "id": "a_replay_t", "x": 560, "y": 618, "width": 400, "height": 18, "text": "skips steps 1-3: straight to grading", "originalText": "skips steps 1-3: straight to grading", "fontSize": 14, "fontFamily": 3, "strokeColor": "#1e3a5f", "roughness": 1}
+  ]
+}
