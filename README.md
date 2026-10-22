@@ -227,8 +227,7 @@ make run-ai-server     # terminal 3: http://127.0.0.1:8000
 ### Sign-in and approvals (optional)
 
 Authentication is off while `API_KEYS={}`. To try roles and four-eyes approval, add keys in
-`ai-server/.env` (for example two `lead` users and one `oncall`), then send `X-API-Key`. The
-details are in [sign-in and roles](./docs/actions-and-security.md).
+`ai-server/.env` (for example two `lead` users and one `oncall`), then send `X-API-Key`.
 
 ### Clean up
 
@@ -303,7 +302,7 @@ ai-oncall-agent/
 │   ├── services/          user-, payment-, order-service (FastAPI)
 │   └── kubernetes/        base manifests, incidents/ (one overlay per fault), monitoring/
 ├── evals/                 incident cases, eval runner, replay, Langfuse experiments
-├── docs/                  deeper docs per topic (below)
+├── docs/images/           diagrams and screenshots used in this README
 ├── compose.yaml, compose.kind.yaml, Makefile
 └── LICENSE
 ```
@@ -322,17 +321,6 @@ make test
 - Integration tests start real MCP server processes over HTTP; cluster tests run when kind is up.
 
 ---
-
-## Documentation
-
-| Topic | What's in it |
-|---|---|
-| [Architecture](./docs/architecture.md) | How an investigation runs, and which MCP features it uses |
-| [The lab](./docs/lab.md) | Sample services on kind, read-only Kubernetes tools, Prometheus |
-| [Evaluation](./docs/evals.md) | Injected incidents, grading, replay, Langfuse experiments |
-| [Observability](./docs/observability.md) | Tracing in Langfuse, live progress streaming |
-| [Advanced MCP features](./docs/mcp-features.md) | Resources, annotations, completions, sampling, model routing |
-| [Changes, security and the gateway](./docs/actions-and-security.md) | Approvals, sign-in, roles, four eyes, audit log, gateway |
 
 ## License
 
