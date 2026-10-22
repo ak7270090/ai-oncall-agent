@@ -1,8 +1,5 @@
 # AI On-Call Agent (MCP)
 
-[![CI](https://github.com/ak7270090/ai-oncall-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ak7270090/ai-oncall-agent/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-
 **Your phone buzzes at 2 a.m.: "Checkout is broken."** You run `kubectl get pods`, scroll through
 hundreds of log lines, check what was deployed today, and stare at Grafana one service after
 another. Twenty minutes later you find it: the payments database is down, and everything above it
