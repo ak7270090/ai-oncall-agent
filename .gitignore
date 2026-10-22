@@ -15,3 +15,6 @@ docs/linkedin/
 mcp-platform/server/logs/
 keys/
 mcp-platform/gateway/bin/
+PLAN.md
+SECURITY.md
+CODING_GUIDELINES.md

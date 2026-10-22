@@ -305,7 +305,7 @@ ai-oncall-agent/
 ├── evals/                 incident cases, eval runner, replay, Langfuse experiments
 ├── docs/                  deeper docs per topic (below)
 ├── compose.yaml, compose.kind.yaml, Makefile
-└── PLAN.md, CODING_GUIDELINES.md, SECURITY.md, LICENSE
+└── LICENSE
 ```
 
 ---
@@ -333,8 +333,6 @@ make test
 | [Observability](./docs/observability.md) | Tracing in Langfuse, live progress streaming |
 | [Advanced MCP features](./docs/mcp-features.md) | Resources, annotations, completions, sampling, model routing |
 | [Changes, security and the gateway](./docs/actions-and-security.md) | Approvals, sign-in, roles, four eyes, audit log, gateway |
-| [PLAN.md](./PLAN.md) | Phases done and planned, with measurements |
-| [CODING_GUIDELINES.md](./CODING_GUIDELINES.md) | Structure, naming and code rules |
 
 ## License
 
